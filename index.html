@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ASCII Ocean – Dynamic Simulation Framework</title>
+    <style>
+        html, body {
+            margin: 0; padding: 0;
+            background: #04060a;
+            overflow: hidden;
+            width: 100vw; height: 100vh;
+            /* Uniform font rendering profile across distinct browser engines */
+            font-family: Consolas, "Lucida Console", "Courier New", Monaco, monospace;
+            font-weight: bold;
+        }
+        canvas { 
+            display: block; 
+            width: 100%; 
+            height: 100%;
+            filter: brightness(2.0);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="simulationCanvas"></canvas>
+    <script>
+        // Restrict document gesture overrides to protect canvas matrix metrics
+        document.addEventListener('gesturestart', e => e.preventDefault());
+        document.addEventListener('gesturechange', e => e.preventDefault());
+        document.addEventListener('gestureend', e => e.preventDefault());
+        document.addEventListener('touchmove', e => {
+            if (e.target === canvas || canvas.contains(e.target)) e.preventDefault();
+        }, { passive: false });
+
+        const canvas = document.getElementById("simulationCanvas");
+        const ctx = canvas.getContext("2d", { alpha: false });
+
+        const CFG = {
+            fontSize: 6,
+            fontFamily: 'Consolas, "Lucida Console", "Courier New", Monaco, monospace',
+            shorelineRatio: 0.35,
+            pierXRatio: 0.84,
+            pierLengthRatio: 0.68,
+        };
+
+        // Re-engineered Luminous Palettes for maximum glyph contrast
+        const PALETTE = {
+            night: {
+                bg: "#030509", drySand: "#7c6453", wetSand: "#4a4c40", water: "#006699",
+                ripple: "#00b4d8", foam: "#caf0f8", pier: "#5c4033", buoy: "#ff3333",
+                flotsam: "#99cc33", dog: "#ff9933", rain: "#4cc9f0", lightning: "#ffffff"
+            },
+            dawn: {
+                bg: "#1a1226", drySand: "#bc987e", wetSand: "#6b7061", water: "#0077b6",
+                ripple: "#48cae4", foam: "#ade8f4", pier: "#70483c", buoy: "#ff5500",
+                flotsam: "#aacc00", dog: "#f77f00", rain: "#90e0ef", lightning: "#fff1e0"
+            },
+            day: {
+                bg: "#0d1b2a", drySand: "#e9c46a", wetSand: "#9a8c73", water: "#0096c7",
+                ripple: "#00b4d8", foam: "#ffffff", pier: "#8b5a2b", buoy: "#ff4d00",
+                flotsam: "#52b788", dog: "#f4a261", rain: "#caf0f8", lightning: "#ffffff"
+            },
+            dusk: {
+                bg: "#1b1424", drySand: "#c77d55", wetSand: "#5c635a", water: "#03045e",
+                ripple: "#0077b6", foam: "#e0f2f1", pier: "#543327", buoy: "#ff3a00",
+                flotsam: "#70e000", dog: "#e76f51", rain: "#00b4d8", lightning: "#ffe6cc"
+            }
+        };
+
+        let W, H, charW, charH, totalCells;
+        
+        // Flattened Allocation Buffers for unified CPU cache access
+        let current, previous, nextBuffer, foam, wetness, rainGrid;
+        let shoreContour;
+        const chars = "◯░∷▓∘oO";
+
+        let entities = [];
+        let rainParticles = [];
+        let lightningFlash = 0;
+
+        const WEATHER_PRESETS = {
+            CALM:    { turb: 0.03, wind: 0.02, rain: 0.0 },
+            BREEZE:  { turb: 0.10, wind: 0.45, rain: 0.0 },
+            DRIZZLE: { turb: 0.18, wind: 0.30, rain: 0.30 },
+            STORM:   { turb: 0.65, wind: 1.80, rain: 0.80 },
+        };
+
+        const ENV = {
+            turb: 0.03, wind: 0.02, rain: 0.0,
+            dayPhase: 0.5,
+            currentColors: {},
+            targetWeather: WEATHER_PRESETS.CALM,
+            weatherTimer: 10000,
+            weatherLabel: "CALM",
+        };
+
+        // Calibrated Dog State Model
+        let dog = {
+            x: 10, y: 0,
+            vx: 0, vy: 0,
+            state: "WANDER", facing: "right",
+            target: null,
+            timer: 120, swimTicks: 0,
+            napTimer: 500,
+            speed: 0.10, // Normalized targeting acceleration rate
+            awakeOverride: false,
+        };
+        let napAnim = { bubbleActive: false, ticks: 0 };
+
+        function parseHex(hex) {
+            let num = parseInt(hex.slice(1), 16);
+            return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+        }
+
+        function toHexStr(r, g, b) {
+            return `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`;
+        }
+
+        function lerpPalettes(p1, p2, f) {
+            const out = {};
+            for (let key in p1) {
+                const c1 = parseHex(p1[key]);
+                const c2 = parseHex(p2[key]);
+                const r = c1.r + (c2.r - c1.r) * f;
+                const g = c1.g + (c2.g - c1.g) * f;
+                const b = c1.b + (c2.b - c1.b) * f;
+                out[key] = toHexStr(r, g, b);
+            }
+            return out;
+        }
+
+        function getNapSprite(facing) {
+            napAnim.ticks++;
+            if (napAnim.ticks % 40 === 0) napAnim.bubbleActive = !napAnim.bubbleActive;
+            let wobble = (napAnim.ticks % 80 < 40) ? 0 : 1;
+            const zLine = napAnim.bubbleActive
+                ? (wobble === 0 ? " z ◯" : "  z ∗")
+                : (wobble === 0 ? " z z" : "  z z");
+            return facing === "left" ? [zLine, "/▾▽=='"] : [zLine, "'==▽▾⧵"];
+        }
+
+        function getDogSprite(state, facing) {
+            switch(state) {
+                case "NAP":   return getNapSprite(facing);
+                case "SWIM":  return ["", facing === "right" ? "∽/(_)\\" : "/(_)\\∽"];
+                case "ALERT": return facing === "right" ? ["'==▽▾⧵ !", "' '"] : ["! /▾▽=='", "  ' '"];
+                default:      return facing === "right" ? ["'==▽▾⧵", "' '"] : ["/▾▽=='", "' '"];
+            }
+        }
+
+        function resize() {
+            const tester = document.createElement("span");
+            tester.style.fontFamily = CFG.fontFamily;
+            tester.style.fontSize = `${CFG.fontSize}px`;
+            tester.style.lineHeight = "1em";
+            tester.style.position = "absolute";
+            tester.style.visibility = "hidden";
+            tester.textContent = "█";
+            document.body.appendChild(tester);
+            const rect = tester.getBoundingClientRect();
+            charW = rect.width;
+            charH = rect.height;
+            document.body.removeChild(tester);
+
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            W = Math.ceil(canvas.width / charW);
+            H = Math.ceil(canvas.height / charH);
+            totalCells = W * H;
+
+            current = new Float32Array(totalCells);
+            previous = new Float32Array(totalCells);
+            nextBuffer = new Float32Array(totalCells);
+            foam = new Float32Array(totalCells);
+            wetness = new Float32Array(totalCells);
+            rainGrid = new Uint8Array(totalCells);
+            shoreContour = new Int32Array(W);
+
+            const baseShore = Math.floor(H * CFG.shorelineRatio);
+            const s1 = Math.random() * 100, s2 = Math.random() * 100;
+
+            for (let x = 0; x < W; x++) {
+                shoreContour[x] = baseShore + Math.floor(Math.sin(x * 0.07 + s1) * 3.5 + Math.cos(x * 0.20 + s2) * 1.5);
+            }
+
+            entities = [
+                { x: Math.floor(W * 0.48), y: baseShore + 6, vx: 0, vy: 0, char: "◬", id: "buoy", carried: false }
+            ];
+            const items = ["~", "•", "♦", "⁕"];
+            for (let i = 0; i < 14; i++) {
+                entities.push({
+                    id: `flotsam_${i}`,
+                    x: Math.random() * (W - 8) + 4,
+                    y: Math.random() * (H - baseShore - 10) + baseShore + 8,
+                    vx: 0, vy: 0,
+                    char: items[Math.floor(Math.random() * items.length)],
+                    carried: false
+                });
+            }
+
+            dog.x = Math.floor(W * 0.3);
+            dog.y = shoreContour[Math.floor(dog.x)] - 4;
+            dog.state = "WANDER";
+            dog.timer = 100;
+            dog.napTimer = 600;
+            dog.target = null;
+            dog.awakeOverride = false;
+            rainParticles = [];
+
+            ctx.font = `bold ${CFG.fontSize}px ${CFG.fontFamily}`;
+            ctx.textBaseline = "top";
+        }
+
+        // Processing cycles locked entirely to static frame deltas
+        function updateWeatherAndTime(dt) {
+            ENV.dayPhase = (ENV.dayPhase + 0.00003 * dt) % 1.0;
+
+            ENV.weatherTimer -= dt;
+            if (ENV.weatherTimer <= 0) {
+                const keys = Object.keys(WEATHER_PRESETS);
+                const key = keys[Math.floor(Math.random() * keys.length)];
+                ENV.targetWeather = WEATHER_PRESETS[key];
+                ENV.weatherLabel = key;
+                ENV.weatherTimer = 20000 + Math.random() * 15000;
+            }
+
+            const lerpFactor = 1 - Math.exp(-0.0002 * dt);
+            ENV.turb += (ENV.targetWeather.turb - ENV.turb) * lerpFactor;
+            ENV.wind += (ENV.targetWeather.wind - ENV.wind) * lerpFactor;
+            ENV.rain += (ENV.targetWeather.rain - ENV.rain) * lerpFactor;
+
+            const p = ENV.dayPhase * 4;
+            const idx = Math.floor(p);
+            const frac = p - idx;
+            const cycles = ["night", "dawn", "day", "dusk"];
+            ENV.currentColors = lerpPalettes(PALETTE[cycles[idx]], PALETTE[cycles[(idx + 1) % 4]], frac);
+        }
+
+        function updateRain() {
+            rainGrid.fill(0);
+
+            if (lightningFlash > 0) lightningFlash--;
+            else if (ENV.turb > 0.50 && Math.random() < ENV.turb * 0.01) {
+                lightningFlash = Math.floor(Math.random() * 3) + 2;
+            }
+
+            if (ENV.rain > 0.05 && Math.random() < ENV.rain * 0.8) {
+                const count = Math.ceil(W * 0.03 * ENV.turb) || 1;
+                for (let k = 0; k < count; k++) {
+                    rainParticles.push({
+                        x: Math.random() * (W + 50) - 25,
+                        y: -2,
+                        targetY: Math.floor(Math.random() * (H - 2)),
+                        speed: (1.2 + ENV.turb * 1.8) * (0.8 + Math.random() * 0.3)
+                    });
+                }
+            }
+
+            if (ENV.turb > 0.1) {
+                for (let x = 1; x < W - 1; x++) {
+                    const sY = shoreContour[x];
+                    if (Math.random() < (ENV.turb * 0.08)) {
+                        const tY = sY + Math.floor(Math.random() * (H - sY - 1));
+                        if (tY > sY && tY < H - 1) {
+                            current[tY * W + x] += (Math.random() - 0.5) * ENV.turb * 0.12;
+                        }
+                    }
+                }
+            }
+
+            for (let i = rainParticles.length - 1; i >= 0; i--) {
+                let p = rainParticles[i];
+                p.x += ENV.wind * 0.6;
+                p.y += p.speed;
+                const ix = Math.floor(p.x);
+                const iy = Math.floor(p.y);
+                if (ix < 0 || ix >= W || iy >= H) { rainParticles.splice(i, 1); continue; }
+
+                if (iy >= p.targetY) {
+                    const idx = iy * W + ix;
+                    if (iy >= shoreContour[ix]) {
+                        if (iy < H - 1 && ix > 0 && ix < W - 1) {
+                            current[idx] += p.speed * 0.3;
+                            if (ENV.turb > 0.4 && Math.random() < 0.2) foam[idx] += p.speed * 0.2;
+                        }
+                    } else {
+                        wetness[idx] = 100;
+                    }
+                    rainParticles.splice(i, 1);
+                } else if (iy >= 0) {
+                    rainGrid[iy * W + ix] = 1;
+                }
+            }
+        }
+
+        function ripple() {
+            const pierX = Math.floor(W * CFG.pierXRatio);
+            const pierLen = Math.floor(H * CFG.pierLengthRatio);
+            const damping = 0.982 - ENV.turb * 0.015;
+
+            for (let y = 1; y < H - 1; y++) {
+                const yw = y * W;
+                const yAbove = (y - 1) * W;
+                const yBelow = (y + 1) * W;
+
+                for (let x = 1; x < W - 1; x++) {
+                    const idx = yw + x;
+                    const shoreY = shoreContour[x];
+                    const isSand = y < shoreY;
+
+                    if (x === pierX && y < pierLen && y % 3 === 0) {
+                        nextBuffer[idx] = 0;
+                        if (Math.abs(current[idx - 1]) > 4 || Math.abs(current[idx + 1]) > 4) {
+                            foam[idx] = Math.min(6, foam[idx] + 2);
+                        }
+                        continue;
+                    }
+
+                    let div = 2.001;
+                    let localDamp = damping;
+                    if (isSand) {
+                        const d = shoreY - y;
+                        div = 2.0006 + d * 0.003;
+                        localDamp = Math.max(0.60, 0.70 - d * 0.08);
+                    }
+
+                    let total = current[yAbove + x] + current[yBelow + x] + current[idx - 1] + current[idx + 1];
+                    let val = (total / div - previous[idx]) * localDamp;
+                    
+                    const delta = Math.abs(val - current[idx]);
+                    if (delta > 0.35) foam[idx] += delta * 0.3;
+
+                    if (isSand) {
+                        if (val > 0.08) foam[idx] += 0.18;
+                        if (val > 0.02 || foam[idx] > 0.04) wetness[idx] = 100;
+                        wetness[idx] *= 0.92;
+                    }
+
+                    foam[idx] *= isSand ? 0.75 : 0.89;
+                    if (foam[idx] < 0.01) foam[idx] = 0;
+
+                    nextBuffer[idx] = Math.max(-35, Math.min(35, val));
+                }
+            }
+            
+            let temp = previous; previous = current; current = nextBuffer; nextBuffer = temp;
+        }
+
+        function scanForFlotsam() {
+            if (dog.state === "NAP" || dog.state === "ALERT" || dog.state === "SWIM" || dog.state === "RETURN") return;
+            if (Math.random() > 0.03) return;
+
+            for (let e of entities) {
+                if (e.id === "buoy" || e.carried) continue;
+                if (e.y > shoreContour[Math.floor(e.x)] + 5 && e.y < H - 4) {
+                    if (Math.abs(e.x - dog.x) < W * 0.45) {
+                        dog.target = e;
+                        dog.state = "ALERT";
+                        dog.timer = 100;
+                        break;
+                    }
+                }
+            }
+        }
+
+        function updateDogAI() {
+            const currentShoreY = shoreContour[Math.floor(dog.x)];
+
+            if (dog.napTimer > 0) dog.napTimer--;
+
+            if (dog.awakeOverride) {
+                dog.awakeOverride = false;
+                dog.state = "WANDER";
+                dog.timer = 120;
+                dog.napTimer = 500;
+                dog.vy = -0.5;
+            }
+
+            switch(dog.state) {
+                case "NAP":
+                    dog.vx *= 0.12; dog.vy *= 0.12;
+                    const targetSleepY = currentShoreY - 4;
+                    dog.y += (targetSleepY - dog.y) * 0.2;
+                    if (Math.abs(dog.y - targetSleepY) < 0.1) dog.y = targetSleepY;
+
+                    if (dog.napTimer <= 0) {
+                        dog.state = "SIT";
+                        dog.timer = 90;
+                    }
+                    break;
+
+                case "SIT":
+                    dog.vx *= 0.15; dog.vy *= 0.15;
+                    dog.y += ((currentShoreY - 3) - dog.y) * 0.12;
+                    dog.timer--;
+                    if (dog.timer <= 0) {
+                        if (Math.random() < 0.25 && dog.napTimer <= 0) {
+                            dog.state = "NAP";
+                            dog.napTimer = 400;
+                        } else {
+                            dog.state = "WANDER";
+                            dog.timer = 80 + Math.floor(Math.random() * 120);
+                            dog.vx = (Math.random() - 0.5) * 0.20; // Drastically lowered walking acceleration steps
+                        }
+                    }
+                    scanForFlotsam();
+                    break;
+
+                case "WANDER":
+                    dog.x += dog.vx;
+                    dog.facing = dog.vx >= 0 ? "right" : "left";
+                    let targetWanderY = currentShoreY - 3.5 + Math.sin(dog.x * 0.3) * 1.0;
+                    dog.y += (targetWanderY - dog.y) * 0.12;
+                    
+                    if (dog.x < 4 || dog.x > W - 10) dog.vx *= -1;
+                    
+                    dog.timer--;
+                    if (dog.timer <= 0) {
+                        dog.state = "SIT";
+                        dog.timer = 50 + Math.floor(Math.random() * 50);
+                    }
+                    scanForFlotsam();
+                    break;
+
+                case "ALERT":
+                    if (!dog.target || dog.target.carried || dog.target.y <= shoreContour[Math.floor(dog.target.x)]) {
+                        dog.state = "SIT"; dog.timer = 40; dog.target = null; break;
+                    }
+                    let dxA = dog.target.x - dog.x;
+                    dog.facing = dxA >= 0 ? "right" : "left";
+                    if (Math.abs(dxA) > 1.2) dog.x += Math.sign(dxA) * dog.speed * 1.1;
+                    dog.y += ((currentShoreY - 1.5) - dog.y) * 0.2;
+
+                    if (dog.timer % 25 === 0 && dog.timer > 0) {
+                        let bx = Math.floor(dog.x + (dog.facing === "right" ? 5 : -1));
+                        let by = Math.floor(currentShoreY + 1);
+                        if (by < H && bx > 0 && bx < W) {
+                            current[by * W + bx] = 5.0; 
+                            foam[by * W + bx] = 3.0;
+                        }
+                    }
+                    dog.timer--;
+                    if (dog.timer <= 0) { 
+                        dog.state = "SWIM"; 
+                        dog.swimTicks = 0; 
+                    }
+                    break;
+
+                case "SWIM":
+                    dog.swimTicks++;
+                    if (!dog.target || dog.target.carried || dog.swimTicks > 500) { 
+                        dog.state = "RETURN"; 
+                        break; 
+                    }
+                    let dxS = dog.target.x - dog.x;
+                    let dyS = dog.target.y - dog.y;
+                    let distS = Math.sqrt(dxS * dxS + dyS * dyS);
+                    dog.facing = dxS >= 0 ? "right" : "left";
+
+                    if (distS < 1.5) { 
+                        dog.state = "RETURN"; 
+                        dog.target.carried = true; 
+                    } else {
+                        // Clamped swimming vectors to make dog fighting currents realistic
+                        dog.vx += (dxS / distS) * dog.speed * 0.12;
+                        dog.vy += (dyS / distS) * dog.speed * 0.12;
+                    }
+                    applyWaterPhysics(dog);
+                    break;
+
+                case "RETURN":
+                    let homeX = dog.target ? dog.target.x : W * 0.3;
+                    let dxR = homeX - dog.x;
+                    dog.facing = dxR >= 0 ? "right" : "left";
+
+                    if (dog.y <= shoreContour[Math.floor(dog.x)] - 2.5) {
+                        if (dog.target && dog.target.carried) {
+                            dog.target.carried = false;
+                            dog.target.y = shoreContour[Math.floor(dog.target.x)] - 1;
+                            dog.target.vx = 0; dog.target.vy = 0;
+                        }
+                        dog.target = null;
+                        dog.state = "SIT";
+                        dog.timer = 100;
+                        dog.napTimer = 250;
+                    } else {
+                        dog.vy -= dog.speed * 0.15;
+                        dog.vx += (homeX - dog.x) * 0.015;
+                    }
+                    applyWaterPhysics(dog);
+
+                    if (dog.target && dog.target.carried) {
+                        dog.target.x = dog.x + (dog.facing === "left" ? -1 : 4);
+                        dog.target.y = dog.y + 0.4;
+                    }
+                    break;
+            }
+
+            dog.x = Math.max(2, Math.min(W - 9, dog.x));
+            dog.y = Math.max(1, Math.min(H - 3, dog.y));
+
+            if (dog.y > currentShoreY) {
+                let ix = Math.floor(dog.x + 2), iy = Math.floor(dog.y + 1);
+                if (iy < H && ix < W) foam[iy * W + ix] = Math.min(5, foam[iy * W + ix] + 0.3);
+            }
+        }
+
+        function applyWaterPhysics(obj) {
+            let ix = Math.max(1, Math.min(W - 2, Math.floor(obj.x)));
+            let iy = Math.max(1, Math.min(H - 2, Math.floor(obj.y)));
+            
+            const idx = iy * W + ix;
+            const slopeX = current[idx + 1] - current[idx - 1];
+            const slopeY = current[idx + W] - current[idx - W];
+
+            obj.vx -= slopeX * 0.20; 
+            obj.vy -= slopeY * 0.20;
+            obj.vy += 0.003; 
+            
+            // Raised linear friction constraints to prevent drifting out of control
+            obj.vx *= 0.78; obj.vy *= 0.78;
+            obj.x += obj.vx; obj.y += obj.vy;
+        }
+
+        function updateEntities() {
+            for (let e of entities) {
+                if (e.carried) continue;
+                applyWaterPhysics(e);
+
+                if (e.x <= 2) { e.x = 3; e.vx *= -0.3; }
+                if (e.x >= W - 3) { e.x = W - 4; e.vx *= -0.3; }
+                if (e.y >= H - 2) { e.y = H - 3; e.vy *= -0.3; }
+
+                const sY = shoreContour[Math.floor(e.x)] || Math.floor(H * CFG.shorelineRatio);
+                if (e.y <= sY) {
+                    e.y = sY; e.vy *= -0.1; e.vx *= 0.3;
+                }
+                
+                let ix = Math.max(1, Math.min(W - 2, Math.floor(e.x)));
+                let iy = Math.max(1, Math.min(H - 2, Math.floor(e.y)));
+                if (Math.abs(e.vx) + Math.abs(e.vy) > 0.08 && iy > sY) {
+                    foam[iy * W + ix] += 0.25;
+                }
+            }
+        }
+
+        function drawHUD() {
+            const c = ENV.currentColors;
+            const flash = lightningFlash > 0;
+            ctx.fillStyle = "rgba(2, 3, 5, 0.9)";
+            ctx.fillRect(0, 0, charW * 44, charH * 2.2);
+
+            let arrow = "→";
+            if (ENV.wind < -0.2) arrow = "←";
+            if (Math.abs(ENV.wind) < 0.1) arrow = "·";
+
+            const txt = ` CONSOLE: ${ENV.weatherLabel} | Wind ${arrow} ${Math.abs(ENV.wind).toFixed(1)} | Diurnal ${(ENV.dayPhase * 100).toFixed(0)}%`;
+            ctx.fillStyle = flash ? c.lightning : c.foam;
+            ctx.fillText(txt, charW * 0.5, charH * 0.4);
+        }
+
+        function render() {
+            const c = ENV.currentColors;
+            const flash = lightningFlash > 0;
+            ctx.fillStyle = flash ? c.lightning : c.bg;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const pierX = Math.floor(W * CFG.pierXRatio);
+            const pierLen = Math.floor(H * CFG.pierLengthRatio);
+            
+            let rainChar = "│";
+            if (ENV.wind < -0.4) rainChar = "╱";
+            if (ENV.wind > 0.4) rainChar = "╲";
+
+            for (let y = 0; y < H; y++) {
+                const yw = y * W;
+                let runStr = "", runCol = "", runStartX = 0;
+
+                for (let x = 0; x < W; x++) {
+                    const idx = yw + x;
+                    const shoreY = shoreContour[x];
+                    const isSand = y < shoreY;
+                    let char = "∷", col = c.water;
+
+                    if (x === pierX && y < pierLen && y % 3 === 0) {
+                        char = "⊗"; col = c.pier;
+                    } else {
+                        const v = current[idx];
+                        const f = foam[idx];
+                        const w = wetness[idx];
+                        
+                        const norm = Math.max(-1, Math.min(1, v / 2.2));
+                        let charIdx = Math.floor(Math.pow(Math.abs(norm), 0.6) * (chars.length - 1));
+                        charIdx = Math.max(0, Math.min(charIdx, chars.length - 1));
+                        char = chars[charIdx];
+
+                        if (isSand) {
+                            if (f > 0.9 || v > 0.4) { col = c.foam; char = "◌"; }
+                            else if (v > 0.05 || f > 0.22) { col = c.foam; char = "·"; }
+                            else if (w > 0.05) { col = c.wetSand; char = "▓"; }
+                            else { col = c.drySand; char = "░"; }
+                        } else {
+                            if (f > 1.6) { col = c.foam; char = "░"; }
+                            else if (f > 0.7) { col = c.foam; char = "*"; }
+                            else if (f > 0.22) { col = c.ripple; char = "°"; }
+                            else if (v > 0.12 || v < -0.12) { col = c.ripple; }
+                            else { col = c.water; if (charIdx === 2) char = "∙"; }
+                        }
+                    }
+
+                    if (rainGrid[idx] === 1) { char = rainChar; col = c.rain; }
+
+                    if (x === 0) {
+                        runCol = col; runStr = char; runStartX = 0;
+                    } else if (col === runCol) {
+                        runStr += char;
+                    } else {
+                        ctx.fillStyle = flash ? c.lightning : runCol;
+                        ctx.fillText(runStr, runStartX * charW, y * charH);
+                        runCol = col; runStr = char; runStartX = x;
+                    }
+                }
+                if (runStr.length > 0) {
+                    ctx.fillStyle = flash ? c.lightning : runCol;
+                    ctx.fillText(runStr, runStartX * charW, y * charH);
+                }
+            }
+
+            for (let e of entities) {
+                ctx.fillStyle = flash ? c.lightning : (e.id === "buoy" ? c.buoy : c.flotsam);
+                ctx.fillText(e.char, Math.floor(e.x) * charW, Math.floor(e.y) * charH);
+            }
+
+            const dogSprite = getDogSprite(dog.state, dog.facing);
+            ctx.fillStyle = c.dog;
+            for (let r = 0; r < dogSprite.length; r++) {
+                ctx.fillText(dogSprite[r], Math.floor(dog.x) * charW, Math.floor(dog.y + r) * charH);
+            }
+
+            drawHUD();
+        }
+
+        function interact(cx, cy) {
+            const rad = 2;
+            for (let y = -rad; y <= rad; y++) {
+                const py = cy + y;
+                if (py <= 0 || py >= H - 1) continue;
+                for (let x = -rad; x <= rad; x++) {
+                    const px = cx + x;
+                    if (px > 0 && px < W - 1) {
+                        current[py * W + px] = 3.5;
+                        foam[py * W + px] = 2.0;
+                    }
+                }
+            }
+
+            const dX = dog.x + 2 - cx;
+            const dY = dog.y - cy;
+            if (Math.sqrt(dX * dX + dY * dY) < 5.0) {
+                if (dog.state === "NAP") dog.awakeOverride = true;
+            }
+
+            for (let e of entities) {
+                const dx = e.x - cx;
+                const dy = e.y - cy;
+                const d = Math.sqrt(dx * dx + dy * dy);
+                if (d < 6) {
+                    e.vx += (dx / d) * 10.0;
+                    e.vy += (dy / d) * 10.0;
+                }
+            }
+        }
+
+        function getGridCoords(e) {
+            const cX = e.clientX || (e.touches && e.touches[0].clientX);
+            const cY = e.clientY || (e.touches && e.touches[0].clientY);
+            return { x: Math.floor(cX / charW), y: Math.floor(cY / charH) };
+        }
+
+        canvas.addEventListener('pointerdown', e => {
+            const { x, y } = getGridCoords(e);
+            interact(x, y);
+        });
+        canvas.addEventListener('pointermove', e => {
+            if (e.buttons) {
+                const { x, y } = getGridCoords(e);
+                interact(x, y);
+            }
+        });
+        window.addEventListener('resize', resize);
+
+        // Deterministic Fixed Timestep Accumulator Loop
+        let lastTime = 0;
+        let accumulator = 0;
+        const TIME_STEP = 16.666; // Fixed 60Hz physics clock boundary
+
+        function animate(timestamp) {
+            if (!lastTime) lastTime = timestamp;
+            let dt = timestamp - lastTime;
+            lastTime = timestamp;
+            
+            if (dt > 100) dt = 100; // Shield against structural context switches or tab switching spikes
+            accumulator += dt;
+
+            while (accumulator >= TIME_STEP) {
+                updateWeatherAndTime(TIME_STEP);
+                updateRain();
+                ripple();
+                updateDogAI();
+                updateEntities();
+                accumulator -= TIME_STEP;
+            }
+
+            render();
+            requestAnimationFrame(animate);
+        }
+
+        resize();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
