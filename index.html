@@ -1,1194 +1,1736 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>ODM_OS // V4</title>
-  <style>
-    :root {
-      --─
-function buildWorld() {
-  scene.add(new THREE.AmbientLight(0xC77B8C, 1.0));
-  const sun = new THREE.DirectionalLight(0xFE8D6D, 0.8);
-  sun.position.set(10, 200, 100);
-  scene.add(sun);
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>ODM_OS // EXPERIMENTAL</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: none;
+        }
+        body,
+        html {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: #1a1a1a;
+            font-family: monospace;
+        }
 
-  const grid = new THREE.GridHelper(1200, 1200, 0x252F1C, 0x252F1C);
-  grid.userData.collidable = false;
-  scene.add(grid);
+        #c {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+        }
+        #slash-canvas {
+            position: absolute;
+            inset: 0;
+            z-index: 5;
+            pointer-events: none;
+        }
 
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(2800, 2200),
-    new THREE.MeshBasicMaterial({ color: CONFIG.COLORS.GROUND, depthWrite: false })
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.1;
-  ground.userData.collidable = true;
-  scene.add(ground);
+        #hud {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            z-index: 10;
+            pointer-events: none;
+            background: rgba(255, 255, 255, 0.82);
+            border-left: 3px solid #8A0303;
+            padding: 6px 10px;
+            font-size: 9px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            line-height: 2;
+            color: #1a1a1a;
+        }
+        #hud-status {
+            color: #8A0303;
+        }
 
-  const pMat    = new THREE.MeshLambertMaterial({ color: CONFIG.COLORS.PILLAR });
-  const pMatTop = new THREE.MeshLambertMaterial({ color: 0x4B474A });
-  const mats    = [pMat, pMat, pMatTop, pMat, pMat, pMat];
+        #kills {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            pointer-events: none;
+            background: rgba(255, 255, 255, 0.82);
+            border-bottom: 3px solid #8A0303;
+            padding: 6px 14px;
+            font-size: 9px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #1a1a1a;
+        }
 
-  for (let i = 0; i < 1160; i++) {
-    const h    = 15 + Math.random() * 200;
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(12, h, 12), mats);
-    let px = (Math.random() - 0.5) * 2400;
-    let pz = (Math.random() - 0.5) * 2400;
-    if (Math.abs(px) < 40 && Math.abs(pz) < 20) px += 140;
-    mesh.position.set(px, h / 2, pz);
-    mesh.userData.collidable = true;
-    mesh.userData.height = h;
-    scene.add(mesh);
-    pillars.push(mesh);
-  }
-}
+        #xhair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            z-index: 10;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid rgba(180, 180, 180, 0.7);
+            transition: border-color 0.1s, transform 0.1s;
+        }
+        #xhair.locked {
+            border-color: #0DD824;
+            transform: translate(-50%, -50%) scale(1.5);
+        }
+        #xhair.smoke-locked {
+            border-color: #00AAFF;
+            transform: translate(-50%, -50%) scale(1.8);
+            box-shadow: 0 0 10px rgba(0, 170, 255, 0.6);
+        }
 
-bg: #302D2A;
-      --text: #212529;
-      --accent: #662E21;
-      --glass: rgba(255,255,255,0.8);
-      --border: #ced4da;
-    }
-    * {
-      margin: 0; padding: 0; box-sizing: border-box;
-      user-select: none; -webkit-user-select: none;
-      -webkit-touch-callout: none;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: none;
-    }
-    body, html {
-      width: 100vw; height: 100vh; overflow: hidden;
-      background: var(--bg); font-family: monospace; color: var(--text);
-    }
+        /* ── CONFIG PANEL ── */
+        #cfg-panel {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            z-index: 999;
+            width: 210px;
+            font-family: monospace;
+            font-size: 9px;
+            font-weight: bold;
+            touch-action: auto;
+            pointer-events: auto;
+        }
+        #cfg-panel,
+        #cfg-panel * {
+            touch-action: auto;
+            pointer-events: auto;
+        }
+        #cfg-panel input[type="range"] {
+            touch-action: pan-x;
+        }
 
-    #canvas-container { position: absolute; inset: 0; z-index: 1; }
+        #cfg-toggle {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.88);
+            border-left: 4px solid #8A0303;
+            padding: 9px 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 9px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+        #cfg-arrow {
+            color: #8A0303;
+            font-size: 10px;
+            transition: transform 0.2s;
+        }
+        #cfg-panel.open #cfg-arrow {
+            transform: rotate(180deg);
+        }
 
-    /* Slash trail overlay */
-    #slash-canvas {
-      position: absolute; inset: 0; z-index: 5;
-      pointer-events: none;
-    }
+        #cfg-body {
+            background: rgba(255, 255, 255, 0.88);
+            border-left: 4px solid #8A0303;
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        #cfg-panel.open #cfg-body {
+            max-height: 75vh;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
 
-    /* Inertia vignette — black on decel */
-    #inertia-vignette {
-      position: absolute; inset: 0; z-index: 6;
-      pointer-events: none; opacity: 0;
-    }
+        .cfg-sec {
+            padding: 8px 10px 4px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+        }
+        .cfg-sec:last-child {
+            border-bottom: none;
+        }
+        .cfg-sec-title {
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            font-size: 8px;
+            color: #8A0303;
+            margin-bottom: 6px;
+            padding-bottom: 3px;
+            border-bottom: 1px solid rgba(138, 3, 3, 0.2);
+        }
+        .cfg-row {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            margin-bottom: 8px;
+        }
+        .cfg-row:last-child {
+            margin-bottom: 2px;
+        }
+        .cfg-lbl {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            font-size: 8px;
+            color: #444;
+        }
+        .cfg-val {
+            color: #8A0303;
+            font-weight: bold;
+            min-width: 48px;
+            text-align: right;
+        }
+        .cfg-row input[type="range"] {
+            width: 100%;
+            height: 18px;
+            accent-color: #8A0303;
+            margin: 0;
+        }
 
-    #crosshair {
-      position: absolute; top: 50%; left: 50%;
-      transform: translate(-50%,-50%);
-      width: 12px; height: 12px; z-index: 10; pointer-events: none;
-      border: 2px solid #aaa; border-radius: 50%; transition: all 0.1s;
-    }
-    #crosshair.locked {
-      border-color: var(--accent);
-      transform: translate(-50%,-50%) scale(1.5);
-      background: rgba(102,46,33,0.25);
-      box-shadow: 0 0 12px rgba(102,46,33,0.5);
-    }
+        .cfg-color-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .cfg-color-row:last-child {
+            margin-bottom: 2px;
+        }
+        .cfg-color-lbl {
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            font-size: 8px;
+            color: #444;
+        }
+        .cfg-color-row input[type="color"] {
+            width: 38px;
+            height: 22px;
+            border: 1px solid rgba(0, 0, 0, 0.2);
+            border-radius: 2px;
+            padding: 1px;
+            cursor: pointer;
+            background: none;
+            touch-action: auto;
+        }
 
-    #telemetry {
-      position: absolute; top: 10px; left: 10px; z-index: 10;
-      background: var(--glass); padding: 10px 14px;
-      border-left: 4px solid var(--accent);
-      font-size: 8px; font-weight: bold;
-      text-transform: uppercase; letter-spacing: 1px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      pointer-events: none; line-height: 1.9;
-    }
+        .cfg-btn {
+            width: 100%;
+            margin-top: 4px;
+            padding: 7px;
+            background: rgba(138, 3, 3, 0.15);
+            border: 1px solid #8A0303;
+            color: #8A0303;
+            font-family: monospace;
+            font-size: 8px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            border-radius: 2px;
+            touch-action: manipulation;
+        }
+        .cfg-btn:active {
+            background: rgba(138, 3, 3, 0.35);
+        }
 
-    /* Kill counter */
-    #kill-counter {
-      position: absolute; top: 10px; right: 10px; z-index: 10;
-      background: var(--glass); padding: 10px 14px;
-      border-right: 4px solid var(--accent);
-      font-size: 11px; font-weight: bold;
-      text-transform: uppercase; letter-spacing: 2px;
-      pointer-events: none;
-    }
+        #terrain-bar {
+            position: absolute;
+            bottom: 160px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            touch-action: auto;
+            pointer-events: auto;
+        }
+        #terrain-btn {
+            background: rgba(138, 3, 3, 0.75);
+            color: #fff;
+            border: none;
+            padding: 8px 14px;
+            font-family: monospace;
+            font-size: 9px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-radius: 2px;
+            pointer-events: auto;
+            touch-action: manipulation;
+        }
+        #terrain-file {
+            display: none;
+        }
+        #terrain-label {
+            color: rgba(255, 255, 255, 0.55);
+            font-size: 8px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            pointer-events: none;
+            max-width: 120px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
 
-    /* LEFT STICK */
-    #joyL {
-      position: absolute; bottom: 55px; left: 40px; z-index: 5;
-      width: 90px; height: 90px; border-radius: 50%;
-      border: 2px dashed var(--border); background: var(--glass);
-      pointer-events: none; opacity: 0.75;
-    }
+        .joy {
+            position: absolute;
+            bottom: 52px;
+            z-index: 8;
+            width: 84px;
+            height: 84px;
+            border-radius: 50%;
+            border: 3px solid #B2BBC4;
+            background: radial-gradient(circle at 30% 30%, #4a4a4a, #1a1a1a);
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.9), 0 0 15px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+        }
+        #joyL {
+            left: 36px;
+        }
+        #joyR {
+            right: 36px;
+        }
+        .knob {
+            position: absolute;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: radial-gradient(circle at 35% 35%, #D4AF37, #8B7620);
+            border: 2px solid #9d8b4d;
+            box-shadow: 0 0 10px rgba(212, 175, 55, 0.35), inset 0 -2px 4px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+            will-change: transform;
+        }
+        #knobL.boost {
+            background: radial-gradient(circle at 35% 35%, #FF6B35, #CC3D1A);
+            box-shadow: 0 0 28px rgba(255, 107, 53, 0.8), inset 0 -2px 4px rgba(0, 0, 0, 0.6);
+            border-color: #FF8C42;
+        }
+        #knobR.active {
+            background: radial-gradient(circle at 35% 35%, #00FF88, #00CC66);
+            box-shadow: 0 0 32px rgba(0, 255, 136, 0.85), inset 0 -2px 4px rgba(0, 0, 0, 0.6);
+            border-color: #00FF88;
+        }
+        #knobR.smoke {
+            background: radial-gradient(circle at 35% 35%, #00AAFF, #0066CC);
+            box-shadow: 0 0 32px rgba(0, 170, 255, 0.85), inset 0 -2px 4px rgba(0, 0, 0, 0.6);
+            border-color: #00AAFF;
+        }
 
-    /* RIGHT STICK */
-    #joyR {
-      position: absolute; bottom: 55px; right: 40px; z-index: 5;
-      width: 90px; height: 90px; border-radius: 50%;
-      border: 2px dashed var(--border); background: var(--glass);
-      pointer-events: none; opacity: 0.75;
-    }
+        #slash-zone {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60vh;
+            z-index: 4;
+            pointer-events: none;
+            border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+        }
 
-    .knob {
-      position: absolute; width: 40px; height: 40px; border-radius: 50%;
-      background: var(--text); top: 50%; left: 50%;
-      transform: translate(-50%,-50%);
-      will-change: transform; pointer-events: none;
-      transition: background 0.1s;
-    }
-    #knobL.boost { background: var(--accent); box-shadow: 0 0 14px rgba(102,46,33,0.7); }
-    #knobR.active { background: var(--accent); box-shadow: 0 0 0 3px rgba(102,46,33,0.4); }
-
-    /* Slash zone indicator — very subtle, top 39% */
-    #slash-zone-hint {
-      position: absolute; top: 0; left: 0; right: 0;
-      height: 39vh; z-index: 4; pointer-events: none;
-      border-bottom: 1px dashed rgba(255,255,255,0.06);
-    }
-
-    #desktop-hint {
-      position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
-      z-index: 10; font-size: 9px; font-weight: bold; color: rgba(255,255,255,0.2);
-      pointer-events: none; letter-spacing: 2px; white-space: nowrap;
-    }
-    @media (hover: none) and (pointer: coarse) { #desktop-hint { display: none; } }
-  </style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+        #smoke-grapple-hint {
+            position: absolute;
+            bottom: 155px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            pointer-events: none;
+            color: rgba(0, 170, 255, 0.7);
+            font-size: 8px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        #smoke-grapple-hint.show {
+            opacity: 1;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js">
+    </script>
 </head>
 <body>
 
-<div id="canvas-container"></div>
-<canvas id="slash-canvas"></canvas>
-<div id="inertia-vignette"></div>
-<div id="crosshair"></div>
-<div id="slash-zone-hint"></div>
+    <canvas id="c"></canvas>
+    <canvas id="slash-canvas"></canvas>
+    <div id="slash-zone"></div>
+    <div id="xhair"></div>
 
-<div id="telemetry">
-  <div>ODM_OS // V4</div>
-  <div id="hud-spd">SPD: 0.0</div>
-  <div id="hud-alt">ALT: 0.0</div>
-  <div id="hud-accel">ACCEL: 0.0</div>
-  <div id="hud-boost">BOOST: 0%</div>
-  <div id="hud-status" style="color:var(--accent)">IDLE</div>
-</div>
+    <div id="hud">
+        <div>ODM_OS // XPERIMENTAL</div>
+        <div id="hud-spd">SPD: 0.0</div>
+        <div id="hud-alt">ALT: 0.0</div>
+        <div id="hud-boost">BOOST: 0%</div>
+        <div id="hud-status">IDLE</div>
+        <div id="hud-smoke" style="color:#00AAFF">SMOKE HOOK: OFF</div>
+    </div>
 
-<div id="kill-counter">KILLS: <span id="kill-count">0</span></div>
+    <div id="kills">KILLS: <span id="kill-count">0</span></div>
+    <div id="smoke-grapple-hint">⬡ SMOKE ANCHOR</div>
 
-<div id="joyL"><div class="knob" id="knobL"></div></div>
-<div id="joyR"><div class="knob" id="knobR"></div></div>
+    <!-- ══ CONFIG PANEL ══ -->
+    <div id="cfg-panel">
+        <div id="cfg-toggle">⚙ CONFIG <span id="cfg-arrow">▼</span></div>
+        <div id="cfg-body">
 
-<div id="desktop-hint">CLICK LOCK · WASD · LMB HOOK · SPACE BOOST · MOUSE SWIPE = SLASH</div>
+            <div class="cfg-sec">
+                <div class="cfg-sec-title">Physics</div>
+                <div class="cfg-row"><div class="cfg-lbl">Gravity<span class="cfg-val" id="v-gravity"></span></div><input type="range" id="s-gravity" min="-60" max="-1" step="0.1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Air Drag<span class="cfg-val" id="v-airDrag"></span></div><input type="range" id="s-airDrag" min="0" max="2" step="0.001"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Ground Fric<span class="cfg-val" id="v-groundFric"></span></div><input type="range" id="s-groundFric" min="0" max="40" step="0.5"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Accel Ground<span class="cfg-val" id="v-accelGround"></span></div><input type="range" id="s-accelGround" min="0" max="800" step="1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Accel Air<span class="cfg-val" id="v-accelAir"></span></div><input type="range" id="s-accelAir" min="0" max="800" step="1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Boost Accel<span class="cfg-val" id="v-boostAccel"></span></div><input type="range" id="s-boostAccel" min="0" max="1000" step="1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Hook Pull<span class="cfg-val" id="v-hookPull"></span></div><input type="range" id="s-hookPull" min="0" max="800" step="1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Max Rope Dist<span class="cfg-val" id="v-maxRopeDist"></span></div><input type="range" id="s-maxRopeDist" min="100" max="8000" step="50"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Max Speed<span class="cfg-val" id="v-maxSpeed"></span></div><input type="range" id="s-maxSpeed" min="10" max="5000" step="10"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Boost Cone<span class="cfg-val" id="v-boostCone"></span></div><input type="range" id="s-boostCone" min="0" max="1" step="0.01"></div>
+            </div>
 
-<script>
-/* ============================================================
-   ODM_OS // V4
-   Controls:
-     Left stick  — move + north cone (45° either side) = analog boost
-     Right stick — look + grapple (hold=active, release=drop)
-     Top 39% of screen — slash zone, swipe to attack
-   Dummies:
-     IDLE (zero cost) → RAGDOLL (physics+raycasting) → SETTLED → DEAD
-     Shared particle system: white=smoke, red=blood/death
-   Physics:
-     707 coefficient, paper-anchored gravity, exponential drag
-     Look momentum decays by GROUND_FRICTION (unified inertia constant)
-   FX:
-     FOV driven by acceleration magnitude, asymmetric lerp
-     Black vignette on deceleration, radial, lingers
-============================================================ */
+            <div class="cfg-sec">
+                <div class="cfg-sec-title">Camera</div>
+                <div class="cfg-row"><div class="cfg-lbl">H-FOV<span class="cfg-val" id="v-hFov"></span></div><input type="range" id="s-hFov" min="30" max="160" step="1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">FOV Max<span class="cfg-val" id="v-hFovMax"></span></div><input type="range" id="s-hFovMax" min="30" max="180" step="1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">FOV Expand<span class="cfg-val" id="v-fovExpandRate"></span></div><input type="range" id="s-fovExpandRate" min="0.001" max="0.5" step="0.001"></div>
+                <div class="cfg-row"><div class="cfg-lbl">FOV Recover<span class="cfg-val" id="v-fovRecoverRate"></span></div><input type="range" id="s-fovRecoverRate" min="0.0001" max="0.2" step="0.0001"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Cam Lag<span class="cfg-val" id="v-camLag"></span></div><input type="range" id="s-camLag" min="0.01" max="1" step="0.01"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Eye Offset<span class="cfg-val" id="v-camEyeOffset"></span></div><input type="range" id="s-camEyeOffset" min="-5" max="10" step="0.1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Stick Sens<span class="cfg-val" id="v-stickSens"></span></div><input type="range" id="s-stickSens" min="0.005" max="0.3" step="0.001"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Stick Radius<span class="cfg-val" id="v-stickRadius"></span></div><input type="range" id="s-stickRadius" min="20" max="150" step="1"></div>
+            </div>
 
-// ── CONFIG ────────────────────────────────────────────────
-const CONFIG = {
-  PHYSICS: {
-    GRAVITY:            -10.81,
-    AIR_DRAG:            0.2,
-    GROUND_FRICTION:    25.0,
-    MOVE_ACCEL_GROUND: 140.0,
-    MOVE_ACCEL_AIR:     12.0,
-    BOOST_ACCEL:        85.0,
-    HOOK_PULL:          75.0,
-    MAX_ROPE_DIST:     1500,
-    MAX_SPEED:         350.0,
-  },
-  BOOST: {
-    // North cone gate — cos(45°) = 0.707
-    CONE_THRESHOLD: 0.707,
-  },
-  BLADE: {
-    RADIUS:        9.0,       // slash hit radius
-    COOLDOWN:      0.45,
-    SWIPE_PX:      40,        // min pixel travel to register slash
-    SWIPE_FRAMES:  6,         // history window
-    FACING_DOT:    0.4,       // must be roughly facing dummy to slash it
-    IMPULSE_MULT:  1.4,       // player vel multiplier transferred to dummy
-  },
-  FOV: {
-    BASE:         65,
-    MAX_EXPAND:   50,
-    ACCEL_SCALE:   0.3,
-    EXPAND_RATE:   0.1,
-    RECOVER_RATE:  0.001,
-  },
-  VIGNETTE: {
-    DECEL_SCALE:  0.001,
-    MAX_OPACITY:  0.85,
-    DECAY_RATE:   0.0001,
-  },
-  LOOK: {
-    STICK_SENS:   0.06,
-    STICK_RADIUS: 65,
-  },
-  DUMMY: {
-    COUNT:           35,
-    GROUND_CHANCE:   0.4,     // 40% ground, 60% pillar top
-    RAGDOLL_DRAG:    1.8,
-    SETTLE_SPEED:    0.8,
-    DESPAWN_TIME:    4.0,
-    PROXIMITY_KILL:  3.5,     // passive proximity fallback
-    NEARBY_RADIUS:   35,      // pillar pre-filter for ragdoll raycasting
-  },
-  SMOKE: {
-    MAX_PARTICLES:   400,     // bumped for dual color
-    MIN_SPEED:         1,
-    BASE_RATE:        18,
-    MAX_RATE:         55,
-    BOOST_MULT:       33.2,
-    GRAPPLE_BURST:    60,
-    ACCEL_BURST:      20,
-    ACCEL_THRESHOLD:  22,
-    PARTICLE_SIZE:    13.2,
-    LIFETIME_MIN:      0.5,
-    LIFETIME_MAX:     21.6,
-    UPWARD_DRIFT:      1.5,
-    SPREAD:            3.0,
-    BLOOD_BURST:      40,     // particles per dummy kill
-    BLOOD_LIFETIME:    6.0,
-  },
-  COLORS: {
-    SKY:    0x4A7293,
-    GROUND: 0x29362C,
-    PILLAR: 0x40312C,
-    ROPE:   0x525B67,
-    DUMMY:  0x8B1A1A,
-  }
-};
+            <div class="cfg-sec">
+                <div class="cfg-sec-title">Blade</div>
+                <div class="cfg-row"><div class="cfg-lbl">Blade Radius<span class="cfg-val" id="v-bladeRadius"></span></div><input type="range" id="s-bladeRadius" min="1" max="500" step="1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Cooldown<span class="cfg-val" id="v-bladeCooldown"></span></div><input type="range" id="s-bladeCooldown" min="0.05" max="3" step="0.05"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Swipe Px<span class="cfg-val" id="v-swipePx"></span></div><input type="range" id="s-swipePx" min="5" max="400" step="5"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Swipe Frames<span class="cfg-val" id="v-swipeFrames"></span></div><input type="range" id="s-swipeFrames" min="1" max="200" step="1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Facing Dot<span class="cfg-val" id="v-facingDot"></span></div><input type="range" id="s-facingDot" min="-1" max="1" step="0.05"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Blade Impulse<span class="cfg-val" id="v-bladeImpulse"></span></div><input type="range" id="s-bladeImpulse" min="0" max="300" step="0.5"></div>
+            </div>
 
-// ── ENGINE STATE ──────────────────────────────────────────
-let scene, camera, renderer, clock;
-let slashCanvas, slashCtx;
-let pillars = []; // stored for dummy placement + ragdoll raycasting
+            <div class="cfg-sec">
+                <div class="cfg-sec-title">Smoke</div>
+                <div class="cfg-row"><div class="cfg-lbl">Particle Size<span class="cfg-val" id="v-smokeSize"></span></div><input type="range" id="s-smokeSize" min="1" max="100" step="0.5"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Max Particles<span class="cfg-val" id="v-smokeMax"></span></div><input type="range" id="s-smokeMax" min="50" max="2000" step="10"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Base Rate<span class="cfg-val" id="v-smokeBase"></span></div><input type="range" id="s-smokeBase" min="0" max="200" step="1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Max Rate<span class="cfg-val" id="v-smokeMaxRate"></span></div><input type="range" id="s-smokeMaxRate" min="0" max="500" step="1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Boost Mult<span class="cfg-val" id="v-boostSmokeMult"></span></div><input type="range" id="s-boostSmokeMult" min="0" max="100" step="0.5"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Life Min<span class="cfg-val" id="v-lifeMin"></span></div><input type="range" id="s-lifeMin" min="0.1" max="10" step="0.1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Life Max<span class="cfg-val" id="v-lifeMax"></span></div><input type="range" id="s-lifeMax" min="0.5" max="60" step="0.5"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Up Drift<span class="cfg-val" id="v-upDrift"></span></div><input type="range" id="s-upDrift" min="0" max="20" step="0.1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Spread<span class="cfg-val" id="v-spread"></span></div><input type="range" id="s-spread" min="0" max="30" step="0.1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Blood Burst<span class="cfg-val" id="v-bloodBurst"></span></div><input type="range" id="s-bloodBurst" min="0" max="1000" step="10"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Blood Life<span class="cfg-val" id="v-bloodLife"></span></div><input type="range" id="s-bloodLife" min="0.5" max="30" step="0.5"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Smoke Hook Dist<span class="cfg-val" id="v-smokeHookDist"></span></div><input type="range" id="s-smokeHookDist" min="10" max="2000" step="10"></div>
+            </div>
 
-const player = {
-  pos:          new THREE.Vector3(0, 10, 40),
-  vel:          new THREE.Vector3(),
-  yaw:          0,
-  pitch:        0,
-  height:       2,
-  boosting:     false,
-  boostIntensity: 0,
-  prevSpeed:    0,
-  slashCooldown: 0,
-};
+            <div class="cfg-sec">
+                <div class="cfg-sec-title">Dummies</div>
+                <div class="cfg-row"><div class="cfg-lbl">Count<span class="cfg-val" id="v-dummyCount"></span></div><input type="range" id="s-dummyCount" min="0" max="200" step="1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Prox Kill<span class="cfg-val" id="v-dummyProxKill"></span></div><input type="range" id="s-dummyProxKill" min="0.5" max="50" step="0.5"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Ragdoll Drag<span class="cfg-val" id="v-ragdollDrag"></span></div><input type="range" id="s-ragdollDrag" min="0" max="10" step="0.1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Despawn Time<span class="cfg-val" id="v-despawnTime"></span></div><input type="range" id="s-despawnTime" min="0.5" max="30" step="0.5"></div>
+                <button class="cfg-btn" id="btn-respawn">↺ RESPAWN DUMMIES</button>
+            </div>
 
-const grapple = { active: false, anchor: new THREE.Vector3(), mesh: null };
-const input   = { w: false, a: false, s: false, d: false };
+            <div class="cfg-sec">
+                <div class="cfg-sec-title">Lighting</div>
+                <div class="cfg-row"><div class="cfg-lbl">Ambient Intens<span class="cfg-val" id="v-ambientInt"></span></div><input type="range" id="s-ambientInt" min="0" max="4" step="0.05"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Sun Intens<span class="cfg-val" id="v-sunInt"></span></div><input type="range" id="s-sunInt" min="0" max="4" step="0.05"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Sun X<span class="cfg-val" id="v-sunX"></span></div><input type="range" id="s-sunX" min="-500" max="500" step="5"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Sun Y<span class="cfg-val" id="v-sunY"></span></div><input type="range" id="s-sunY" min="0" max="500" step="5"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Sun Z<span class="cfg-val" id="v-sunZ"></span></div><input type="range" id="s-sunZ" min="-500" max="500" step="5"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Fog Near<span class="cfg-val" id="v-fogNear"></span></div><input type="range" id="s-fogNear" min="10" max="5000" step="10"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Fog Far<span class="cfg-val" id="v-fogFar"></span></div><input type="range" id="s-fogFar" min="100" max="50000" step="100"></div>
+            </div>
 
-const stickL = { active: false, id: null, cx: 0, cy: 0, dx: 0, dy: 0 };
-const stickR = {
-  active: false, id: null, cx: 0, cy: 0, dx: 0, dy: 0,
-  momentumDx: 0, momentumDy: 0,
-};
+            <div class="cfg-sec">
+                <div class="cfg-sec-title">Colors</div>
+                <div class="cfg-color-row"><span class="cfg-color-lbl">Sky</span><input type="color" id="c-sky" value="#C8E3D4"></div>
+                <div class="cfg-color-row"><span class="cfg-color-lbl">Ground</span><input type="color" id="c-ground" value="#4A5538"></div>
+                <div class="cfg-color-row"><span class="cfg-color-lbl">Pillar</span><input type="color" id="c-pillar" value="#B89D7A"></div>
+                <div class="cfg-color-row"><span class="cfg-color-lbl">Rope</span><input type="color" id="c-rope" value="#7D7D85"></div>
+                <div class="cfg-color-row"><span class="cfg-color-lbl">Dummy</span><input type="color" id="c-dummy" value="#993230"></div>
+                <div class="cfg-color-row"><span class="cfg-color-lbl">Ambient</span><input type="color" id="c-ambient" value="#E8D5C4"></div>
+                <div class="cfg-color-row"><span class="cfg-color-lbl">Sun</span><input type="color" id="c-sun" value="#FAF0E6"></div>
+            </div>
 
-// Slash touch tracking
-const slashTouches = {}; // id → history array
+            <div class="cfg-sec">
+                <div class="cfg-sec-title">World</div>
+                <div class="cfg-row"><div class="cfg-lbl">Pillar Count<span class="cfg-val" id="v-pillarCount"></span></div><input type="range" id="s-pillarCount" min="0" max="3000" step="10"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Cluster Count<span class="cfg-val" id="v-clusterCount"></span></div><input type="range" id="s-clusterCount" min="1" max="60" step="1"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Cluster Radius<span class="cfg-val" id="v-clusterRadius"></span></div><input type="range" id="s-clusterRadius" min="100" max="5000" step="50"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Tree H Min<span class="cfg-val" id="v-treeHMin"></span></div><input type="range" id="s-treeHMin" min="10" max="500" step="5"></div>
+                <div class="cfg-row"><div class="cfg-lbl">Tree H Max<span class="cfg-val" id="v-treeHMax"></span></div><input type="range" id="s-treeHMax" min="50" max="2000" step="10"></div>
+                <button class="cfg-btn" id="btn-rebuild">↺ REBUILD WORLD</button>
+            </div>
 
-let isPointerLocked = false;
-const raycaster  = new THREE.Raycaster();
-const centerNDC  = new THREE.Vector2(0, 0);
-let currentFov   = CONFIG.FOV.BASE;
-let vigOpacity   = 0;
-let killCount    = 0;
+        </div>
+    </div>
 
-// ── PARTICLE SYSTEM ───────────────────────────────────────
-// Unified pool — each particle has a color field (white smoke or red blood)
-const particles = [];
-let pGeo, pMat, pPoints;
-let pEmitAccum = 0;
+    <div id="terrain-bar">
+        <button id="terrain-btn">[ LOAD MAP ]</button>
+        <input type="file" id="terrain-file" accept=".json,application/json,image/*">
+        <div id="terrain-label">no map loaded</div>
+    </div>
 
-// ── DUMMY POOL ────────────────────────────────────────────
-const dummies = [];
+    <div class="joy" id="joyL"><div class="knob" id="knobL"></div></div>
+    <div class="joy" id="joyR"><div class="knob" id="knobR"></div></div>
 
-// ── INIT ──────────────────────────────────────────────────
-function init() {
-  const container = document.getElementById('canvas-container');
+    <script>
+        // ════════════════════════════════════════════════════════
+        //  CONFIG — single source of truth
+        // ════════════════════════════════════════════════════════
+        const CFG = {
+            gravity: -14,
+            airDrag: 0.09,
+            groundFric: 8,
+            accelGround: 120,
+            accelAir: 140,
+            boostAccel: 180,
+            hookPull: 170,
+            maxRopeDist: 2200,
+            maxSpeed: 1400,
+            boostCone: 0.55,
 
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(CONFIG.COLORS.SKY);
-  scene.fog = new THREE.Fog(CONFIG.COLORS.SKY, 1, 1000);
+            bladeRadius: 114,
+            bladeCooldown: 0.35,
+            swipePx: 228,
+            swipeFrames: 68,
+            facingDot: 0.3,
+            bladeImpulse: 81.8,
 
-  camera = new THREE.PerspectiveCamera(CONFIG.FOV.BASE, innerWidth / innerHeight, 0.1, 2000);
-  camera.rotation.order = 'YXZ';
+            hFov: 60,
+            hFovMax: 75,
+            fovExpandRate: 0.05,
+            fovRecoverRate: 0.015,
+            camEyeOffset: 0.4,
+            camLag: 0.22,
+            stickSens: 0.06,
+            stickRadius: 85,
 
-  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  container.appendChild(renderer.domElement);
+            dummyCount: 50,
+            dummyRadius: 70,
+            dummyHeight: 220,
+            dummyProxKill: 4.5,
+            ragdollDrag: 1.5,
+            settleSpeed: 0.8,
+            despawnTime: 3.0,
 
-  slashCanvas        = document.getElementById('slash-canvas');
-  slashCanvas.width  = innerWidth;
-  slashCanvas.height = innerHeight;
-  slashCtx           = slashCanvas.getContext('2d');
+            smokeMax: 600,
+            smokeBase: 18,
+            smokeMaxRate: 60,
+            smokeSize: 15,
+            lifeMin: 0.5,
+            lifeMax: 18,
+            upDrift: 1.6,
+            spread: 3.2,
+            bloodBurst: 400,
+            bloodLife: 7,
+            boostSmokeMult: 35,
 
-  clock = new THREE.Clock();
-  buildWorld();
-  initParticles();
-  spawnDummies();
-  bindInputs();
-  engineTick();
-}
+            smokeHookDist: 600,
 
-// ── WORLD ─────────────────────────────────────────────────
-function buildWorld() {
-  scene.add(new THREE.AmbientLight(0xC77B8C, 1.0));
-  const sun = new THREE.DirectionalLight(0xFE8D6D, 0.8);
-  sun.position.set(10, 200, 100);
-  scene.add(sun);
+            ambientInt: 1.2,
+            sunInt: 1.1,
+            sunX: 80,
+            sunY: 280,
+            sunZ: 120,
+            fogNear: 50,
+            fogFar: 14000,
 
-  const grid = new THREE.GridHelper(1200, 1200, 0x252F1C, 0x252F1C);
-  grid.userData.collidable = false;
-  scene.add(grid);
+            pillarCount: 1100,
+            clusterCount: 30,
+            clusterRadius: 1100,
+            treeHMin: 60,
+            treeHMax: 900,
 
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(2800, 2200),
-    new THREE.MeshBasicMaterial({ color: CONFIG.COLORS.GROUND, depthWrite: false })
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.1;
-  ground.userData.collidable = true;
-  scene.add(ground);
+            skyColor: '#C8E3D4',
+            groundColor: '#4A5538',
+            pillarColor: '#B89D7A',
+            ropeColor: '#7D7D85',
+            dummyColor: '#993230',
+            ambientColor: '#E8D5C4',
+            sunColor: '#FAF0E6',
+        };
 
-  const pMat    = new THREE.MeshLambertMaterial({ color: CONFIG.COLORS.PILLAR });
-  const pMatTop = new THREE.MeshLambertMaterial({ color: 0x4B474A });
-  const mats    = [pMat, pMat, pMatTop, pMat, pMat, pMat];
+        const WORLD = { size: 22000 };
 
-  for (let i = 0; i < 1160; i++) {
-    const h    = 15 + Math.random() * 200;
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(12, h, 12), mats);
-    let px = (Math.random() - 0.5) * 2400;
-    let pz = (Math.random() - 0.5) * 2400;
-    if (Math.abs(px) < 40 && Math.abs(pz) < 20) px += 140;
-    mesh.position.set(px, h / 2, pz);
-    mesh.userData.collidable = true;
-    mesh.userData.height = h;
-    scene.add(mesh);
-    pillars.push(mesh);
-  }
-}
+        // ════════════════════════════════════════════════════════
+        //  THREE SETUP
+        // ════════════════════════════════════════════════════════
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(74, innerWidth / innerHeight, 0.3, 30000);
+        camera.rotation.order = 'YXZ';
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true,
+            powerPreference: 'high-performance' });
+        renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+        renderer.setSize(innerWidth, innerHeight);
+        scene.background = new THREE.Color(CFG.skyColor);
+        scene.fog = new THREE.Fog(CFG.skyColor, CFG.fogNear, CFG.fogFar);
 
-// ── PARTICLES ─────────────────────────────────────────────
-function createSmokeTexture() {
-  const c = document.createElement('canvas');
-  c.width = 128; c.height = 128;
-  const ctx = c.getContext('2d');
-  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-  g.addColorStop(0,    'rgba(255,255,255,1)');
-  g.addColorStop(0.15, 'rgba(240,248,255,0.9)');
-  g.addColorStop(0.35, 'rgba(200,225,245,0.55)');
-  g.addColorStop(0.6,  'rgba(160,200,225,0.15)');
-  g.addColorStop(1,    'rgba(130,180,210,0)');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, 128, 128);
-  const t = new THREE.CanvasTexture(c);
-  t.needsUpdate = true;
-  return t;
-}
-
-function initParticles() {
-  const max = CONFIG.SMOKE.MAX_PARTICLES;
-  pGeo = new THREE.BufferGeometry();
-
-  // positions + colors as vertex attributes
-  const positions = new Float32Array(max * 3);
-  const colors    = new Float32Array(max * 3); // r,g,b per particle
-  pGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  pGeo.setAttribute('color',    new THREE.BufferAttribute(colors, 3));
-  pGeo.setDrawRange(0, 0);
-
-  pMat = new THREE.PointsMaterial({
-    size:            CONFIG.SMOKE.PARTICLE_SIZE,
-    map:             createSmokeTexture(),
-    vertexColors:    true,               // use per-particle color
-    blending:        THREE.AdditiveBlending,
-    depthWrite:      false,
-    transparent:     true,
-    opacity:         0.65,
-    sizeAttenuation: true,
-  });
-
-  pPoints = new THREE.Points(pGeo, pMat);
-  pPoints.frustumCulled = false;
-  scene.add(pPoints);
-}
-
-function emitParticle(pos, vel, isBlood, lifeMult) {
-  const cfg  = CONFIG.SMOKE;
-  const life = isBlood
-    ? cfg.BLOOD_LIFETIME * (0.5 + Math.random() * 0.8)
-    : (cfg.LIFETIME_MIN + Math.random() * (cfg.LIFETIME_MAX - cfg.LIFETIME_MIN)) * (lifeMult || 1);
-  const spread = isBlood ? cfg.SPREAD * 1.5 : cfg.SPREAD;
-  particles.push({
-    pos:     pos.clone(),
-    vel:     new THREE.Vector3(
-      vel.x + (Math.random() - 0.5) * spread * 2,
-      vel.y + Math.random() * cfg.UPWARD_DRIFT + (Math.random() - 0.5) * spread,
-      vel.z + (Math.random() - 0.5) * spread * 2
-    ),
-    life,
-    maxLife: life,
-    blood:   isBlood,
-  });
-}
-
-function updateParticles(dt) {
-  const cfg        = CONFIG.SMOKE;
-  const speed      = player.vel.length();
-  const isBoosting = player.boostIntensity > 0.05;
-
-  // Age + move
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    p.life -= dt;
-    if (p.life <= 0) { particles.splice(i, 1); continue; }
-    p.pos.x += p.vel.x * dt;
-    p.pos.y += p.vel.y * dt;
-    p.pos.z += p.vel.z * dt;
-    p.vel.x *= Math.exp(-3.5 * dt);
-    p.vel.z *= Math.exp(-3.5 * dt);
-    p.vel.y *= Math.exp(-2.5 * dt);
-    p.vel.y += 1.2 * dt; // upward drift
-  }
-
-  // Movement smoke emission
-  let rate = 0;
-  if (speed > cfg.MIN_SPEED) {
-    const t = Math.min(1, (speed - cfg.MIN_SPEED) / (CONFIG.PHYSICS.MAX_SPEED - cfg.MIN_SPEED));
-    rate = cfg.BASE_RATE + t * (cfg.MAX_RATE - cfg.BASE_RATE);
-  }
-  if (isBoosting) rate *= cfg.BOOST_MULT;
-  if (grapple.active) rate += cfg.BASE_RATE * 0.7;
-
-  // Accel burst
-  const speedDelta = speed - player.prevSpeed;
-  if (speedDelta > cfg.ACCEL_THRESHOLD && speed > cfg.MIN_SPEED) {
-    const burst  = Math.floor(cfg.ACCEL_BURST * (speedDelta / cfg.ACCEL_THRESHOLD));
-    const behind = player.vel.clone().normalize().multiplyScalar(-1);
-    if (behind.length() < 0.1) behind.set(0, -1, 0);
-    for (let b = 0; b < Math.min(burst, 30) && particles.length < cfg.MAX_PARTICLES; b++) {
-      emitParticle(
-        player.pos.clone().addScaledVector(behind, 0.8 + Math.random() * 1.5),
-        behind.clone().multiplyScalar(4 + Math.random() * 8),
-        false, 1.3
-      );
-    }
-  }
-
-  // Continuous trail
-  if (rate > 0 && particles.length < cfg.MAX_PARTICLES) {
-    pEmitAccum += rate * dt;
-    const behind = player.vel.clone().normalize().multiplyScalar(-1);
-    if (behind.length() < 0.001) behind.set(0, -0.1, 0);
-    while (pEmitAccum >= 1.0 && particles.length < cfg.MAX_PARTICLES) {
-      pEmitAccum -= 1.0;
-      const ep = player.pos.clone()
-        .addScaledVector(behind, 1.0 + Math.random() * 2.5)
-        .add(new THREE.Vector3((Math.random()-0.5)*1.2, -0.5+Math.random()*0.8, (Math.random()-0.5)*1.2));
-      emitParticle(ep, behind.clone().multiplyScalar(3 + Math.random() * 6), false, 1.0);
-    }
-  }
-
-  // Anchor puff
-  if (grapple.active && particles.length < cfg.MAX_PARTICLES - 3 && Math.random() < 0.2) {
-    const ap = grapple.anchor.clone().add(
-      new THREE.Vector3((Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5)
-    );
-    particles.push({
-      pos: ap,
-      vel: new THREE.Vector3((Math.random()-0.5)*1.5, 1.5+Math.random()*3, (Math.random()-0.5)*1.5),
-      life: 0.3 + Math.random() * 0.8, maxLife: 1.2, blood: false,
-    });
-  }
-
-  while (particles.length > cfg.MAX_PARTICLES) particles.shift();
-
-  // Write geometry
-  const posArr = pGeo.attributes.position.array;
-  const colArr = pGeo.attributes.color.array;
-  const count  = particles.length;
-
-  for (let i = 0; i < count; i++) {
-    const p  = particles[i];
-    const i3 = i * 3;
-    const life = p.life / p.maxLife; // fade out
-
-    posArr[i3]   = p.pos.x;
-    posArr[i3+1] = p.pos.y;
-    posArr[i3+2] = p.pos.z;
-
-    if (p.blood) {
-      // Red blood — fades dark as it ages
-      colArr[i3]   = 0.7 * life + 0.15;
-      colArr[i3+1] = 0.05 * life;
-      colArr[i3+2] = 0.05 * life;
-    } else {
-      // White/blue smoke
-      const brightness = 0.6 + 0.4 * life;
-      colArr[i3]   = brightness * 0.85;
-      colArr[i3+1] = brightness * 0.92;
-      colArr[i3+2] = brightness;
-    }
-  }
-
-  pGeo.attributes.position.needsUpdate = true;
-  pGeo.attributes.color.needsUpdate    = true;
-  pGeo.setDrawRange(0, count);
-}
-
-// Blood burst on dummy death
-function emitBloodBurst(pos, inheritVel) {
-  const count = CONFIG.SMOKE.BLOOD_BURST;
-  for (let i = 0; i < count && particles.length < CONFIG.SMOKE.MAX_PARTICLES; i++) {
-    const splat = inheritVel.clone()
-      .multiplyScalar(0.3 + Math.random() * 0.7)
-      .add(new THREE.Vector3(
-        (Math.random()-0.5) * 8,
-        Math.random() * 6,
-        (Math.random()-0.5) * 8
-      ));
-    emitParticle(pos.clone().add(new THREE.Vector3(
-      (Math.random()-0.5)*2, Math.random()*2, (Math.random()-0.5)*2
-    )), splat, true, 1.0);
-  }
-}
-
-// ── DUMMIES ───────────────────────────────────────────────
-function spawnDummies() {
-  const dummyGeo = new THREE.CylinderGeometry(0.6, 0.75, 2.2, 8);
-  const dummyMat = new THREE.MeshLambertMaterial({ color: CONFIG.COLORS.DUMMY });
-
-  for (let i = 0; i < CONFIG.DUMMY.COUNT; i++) {
-    const mesh = new THREE.Mesh(dummyGeo, dummyMat.clone());
-    const onGround = Math.random() < CONFIG.DUMMY.GROUND_CHANCE;
-
-    let px, py, pz;
-    if (onGround) {
-      px = (Math.random() - 0.5) * 2000;
-      pz = (Math.random() - 0.5) * 2000;
-      py = 1.1;
-    } else {
-      // Place on top of a random pillar
-      const pillar = pillars[Math.floor(Math.random() * pillars.length)];
-      px = pillar.position.x + (Math.random()-0.5) * 4;
-      pz = pillar.position.z + (Math.random()-0.5) * 4;
-      py = pillar.userData.height + 1.1;
-    }
-
-    mesh.position.set(px, py, pz);
-    scene.add(mesh);
-
-    dummies.push({
-      mesh,
-      pos:          new THREE.Vector3(px, py, pz),
-      vel:          new THREE.Vector3(),
-      state:        'IDLE',     // IDLE → RAGDOLL → SETTLED → DEAD
-      settleTimer:  0,
-      despawnTimer: 0,
-    });
-  }
-}
-
-function triggerRagdoll(dummy, impulse) {
-  if (dummy.state !== 'IDLE') return;
-  dummy.state = 'RAGDOLL';
-  dummy.vel.copy(impulse);
-  emitBloodBurst(dummy.pos, impulse);
-}
-
-function updateDummies(dt) {
-  const dcfg = CONFIG.DUMMY;
-
-  for (let i = dummies.length - 1; i >= 0; i--) {
-    const d = dummies[i];
-
-    if (d.state === 'IDLE') {
-      // Zero cost — just check proximity for passive kill
-      const dist = player.pos.distanceTo(d.pos);
-      if (dist < dcfg.PROXIMITY_KILL) {
-        // Passive contact — small impulse from player velocity
-        triggerRagdoll(d, player.vel.clone().multiplyScalar(0.5));
-        killCount++;
-        document.getElementById('kill-count').innerText = killCount;
-      }
-      continue;
-    }
-
-    if (d.state === 'RAGDOLL') {
-      // Physics
-      d.vel.y += CONFIG.PHYSICS.GRAVITY * dt;
-      const drag = Math.exp(-dcfg.RAGDOLL_DRAG * dt);
-      d.vel.x *= drag; d.vel.z *= drag;
-
-      d.pos.addScaledVector(d.vel, dt);
-      d.mesh.position.copy(d.pos);
-
-      // Tilt mesh in velocity direction for visual effect
-      if (d.vel.length() > 0.5) {
-        d.mesh.rotation.z = d.vel.x * 0.04;
-        d.mesh.rotation.x = -d.vel.z * 0.04;
-      }
-
-      // Ground check
-      if (d.pos.y <= 1.1) {
-        d.pos.y = 1.1;
-        d.vel.y = -d.vel.y * 0.18; // slight bounce
-        d.vel.x *= 0.6; d.vel.z *= 0.6;
-      }
-
-      // Nearby pillar raycasting — only active during ragdoll
-      if (d.vel.length() > 1.0) {
-        const nearby = pillars.filter(p => p.position.distanceTo(d.pos) < dcfg.NEARBY_RADIUS);
-        if (nearby.length > 0) {
-          raycaster.set(d.pos, d.vel.clone().normalize());
-          const hits = raycaster.intersectObjects(nearby, false);
-          if (hits.length && hits[0].distance < d.vel.length() * dt * 8) {
-            // Hit a pillar — bounce
-            d.vel.multiplyScalar(-0.3);
-            emitBloodBurst(d.pos, d.vel.clone().multiplyScalar(0.5));
-          }
+        function setHFov(hFovDeg) {
+            const aspect = innerWidth / innerHeight;
+            const hRad = THREE.MathUtils.degToRad(hFovDeg);
+            const vRad = 2 * Math.atan(Math.tan(hRad / 2) / aspect);
+            camera.fov = THREE.MathUtils.radToDeg(vRad);
+            camera.aspect = aspect;
+            camera.updateProjectionMatrix();
         }
-      }
-
-      // Continuous blood trickle while ragdolling
-      if (Math.random() < 0.3 && particles.length < CONFIG.SMOKE.MAX_PARTICLES) {
-        emitParticle(
-          d.pos.clone().add(new THREE.Vector3((Math.random()-0.5)*0.5, Math.random()*0.5, (Math.random()-0.5)*0.5)),
-          new THREE.Vector3((Math.random()-0.5)*1.5, 0.5+Math.random()*2, (Math.random()-0.5)*1.5),
-          true, 0.6
-        );
-      }
-
-      // Settle check
-      if (d.vel.length() < dcfg.SETTLE_SPEED) {
-        d.state       = 'SETTLED';
-        d.settleTimer = 0;
-      }
-      continue;
-    }
-
-    if (d.state === 'SETTLED') {
-      d.settleTimer += dt;
-      // Light blood trickle while settled
-      if (Math.random() < 0.08 && particles.length < CONFIG.SMOKE.MAX_PARTICLES) {
-        emitParticle(
-          d.pos.clone(),
-          new THREE.Vector3((Math.random()-0.5)*0.8, 0.3+Math.random()*0.8, (Math.random()-0.5)*0.8),
-          true, 0.4
-        );
-      }
-      if (d.settleTimer > dcfg.DESPAWN_TIME) {
-        d.state = 'DEAD';
-      }
-      continue;
-    }
-
-    if (d.state === 'DEAD') {
-      // Final burst then remove
-      emitBloodBurst(d.pos, new THREE.Vector3(0, 2, 0));
-      scene.remove(d.mesh);
-      d.mesh.geometry.dispose();
-      dummies.splice(i, 1);
-    }
-  }
-}
-
-// ── SLASH SYSTEM ──────────────────────────────────────────
-let slashHistory = []; // screen points for trail rendering
-
-function drawSlashTrail() {
-  slashCtx.clearRect(0, 0, slashCanvas.width, slashCanvas.height);
-  for (const p of slashHistory) p.age++;
-  slashHistory = slashHistory.filter(p => p.age < 10);
-  if (slashHistory.length < 2) return;
-
-  slashCtx.shadowBlur  = 6;
-  slashCtx.shadowColor = 'rgba(200,40,40,0.8)';
-  for (let i = 1; i < slashHistory.length; i++) {
-    const p1   = slashHistory[i-1];
-    const p2   = slashHistory[i];
-    const life = (10 - p2.age) / 10;
-    slashCtx.beginPath();
-    slashCtx.moveTo(p1.x, p1.y);
-    slashCtx.lineTo(p2.x, p2.y);
-    slashCtx.strokeStyle = `rgba(220,50,50,${life * 0.9})`;
-    slashCtx.lineWidth   = life * 5;
-    slashCtx.lineCap     = 'round';
-    slashCtx.stroke();
-  }
-  slashCtx.shadowBlur = 0;
-}
-
-function detectAndPerformSlash(history) {
-  if (player.slashCooldown > 0) return;
-  const recent = history.filter(p => p.age < CONFIG.BLADE.SWIPE_FRAMES);
-  if (recent.length < 3) return;
-
-  const first = recent[0];
-  const last  = recent[recent.length - 1];
-  const dx    = last.x - first.x;
-  const dy    = last.y - first.y;
-  const dist  = Math.sqrt(dx*dx + dy*dy);
-  if (dist < CONFIG.BLADE.SWIPE_PX) return;
-
-  // Valid slash — check for dummies in range + facing cone
-  player.slashCooldown = CONFIG.BLADE.COOLDOWN;
-
-  const fwd = new THREE.Vector3();
-  camera.getWorldDirection(fwd);
-
-  let slashHit = false;
-  for (const d of dummies) {
-    if (d.state !== 'IDLE') continue;
-    const toDummy = new THREE.Vector3().subVectors(d.pos, player.pos);
-    const distToDummy = toDummy.length();
-    if (distToDummy > CONFIG.BLADE.RADIUS) continue;
-
-    toDummy.normalize();
-    const dot = fwd.dot(toDummy);
-    if (dot < CONFIG.BLADE.FACING_DOT) continue;
-
-    // Hit — transfer player momentum to dummy
-    const impulse = player.vel.clone().multiplyScalar(CONFIG.BLADE.IMPULSE_MULT);
-    impulse.y += 4; // slight upward kick
-    triggerRagdoll(d, impulse);
-    killCount++;
-    document.getElementById('kill-count').innerText = killCount;
-    slashHit = true;
-  }
-
-  // Camera shake on slash regardless of hit
-  triggerShake(slashHit ? 0.18 : 0.06, slashHit ? 2.5 : 0.8);
-}
-
-// ── CAMERA SHAKE ─────────────────────────────────────────
-let shakeDur = 0, shakeInten = 0;
-function triggerShake(dur, inten) { shakeDur = dur; shakeInten = inten; }
-
-// ── FOV + VIGNETTE ────────────────────────────────────────
-function updateInertiaFX(dt, accel) {
-  const fovCfg = CONFIG.FOV;
-  const vigCfg = CONFIG.VIGNETTE;
-
-  const accelMag = Math.abs(accel);
-  const isDecel  = accel < -2.0;
-
-  const targetFov = fovCfg.BASE + Math.min(fovCfg.MAX_EXPAND, accelMag * fovCfg.ACCEL_SCALE);
-  const lerpRate  = currentFov < targetFov ? fovCfg.EXPAND_RATE : fovCfg.RECOVER_RATE;
-  currentFov     += (targetFov - currentFov) * lerpRate;
-  camera.fov      = currentFov;
-  camera.updateProjectionMatrix();
-
-  const vig = document.getElementById('inertia-vignette');
-  if (isDecel) {
-    const tgt = Math.min(vigCfg.MAX_OPACITY, accelMag * vigCfg.DECEL_SCALE);
-    vigOpacity += (tgt - vigOpacity) * 0.25;
-  } else {
-    vigOpacity += (0 - vigOpacity) * vigCfg.DECAY_RATE;
-  }
-  if (vigOpacity < 0.002) vigOpacity = 0;
-
-  vig.style.background = `radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,${vigOpacity.toFixed(3)}) 100%)`;
-  vig.style.opacity = 1;
-}
-
-// ── PHYSICS ───────────────────────────────────────────────
-function updatePhysics(dt) {
-  if (dt <= 0) return;
-
-  camera.rotation.y = player.yaw;
-  camera.rotation.x = player.pitch;
-
-  player.vel.y += CONFIG.PHYSICS.GRAVITY * dt;
-
-  // Movement from left stick + WASD
-  let mx = (input.d ? 1 : 0) - (input.a ? 1 : 0);
-  let mz = (input.s ? 1 : 0) - (input.w ? 1 : 0);
-  if (stickL.active) { mx += stickL.dx; mz += stickL.dy; }
-
-  const moveVec = new THREE.Vector3(mx, 0, mz);
-  if (moveVec.lengthSq() > 1) moveVec.normalize();
-  moveVec.applyAxisAngle(new THREE.Vector3(0, 1, 0), player.yaw);
-
-  const onGround  = player.pos.y <= player.height + 0.05;
-  const moveAccel = onGround ? CONFIG.PHYSICS.MOVE_ACCEL_GROUND : CONFIG.PHYSICS.MOVE_ACCEL_AIR;
-  player.vel.x += moveVec.x * moveAccel * dt;
-  player.vel.z += moveVec.z * moveAccel * dt;
-
-  // ── NORTH CONE BOOST ─────────────────────────────────
-  // cos(45°) = 0.707 gate — 707 area code, hardcoded in physics
-  // Intensity = alignment × stick magnitude, analog 0→1
-  player.boostIntensity = 0;
-  if (stickL.active) {
-    const mag = Math.sqrt(stickL.dx * stickL.dx + stickL.dy * stickL.dy);
-    if (mag > 0.05) {
-      const northDot = -stickL.dy / mag; // how aligned with north (up = -dy)
-      if (northDot > CONFIG.BOOST.CONE_THRESHOLD) {
-        player.boostIntensity = northDot * mag; // 0→1 analog
-      }
-    }
-  }
-  // Keyboard space = full boost
-  if (input.space) player.boostIntensity = 1.0;
-
-  if (player.boostIntensity > 0) {
-    const fwd = new THREE.Vector3();
-    camera.getWorldDirection(fwd);
-    player.vel.addScaledVector(fwd, CONFIG.PHYSICS.BOOST_ACCEL * player.boostIntensity * dt);
-  }
-
-  // Grapple pull
-  if (grapple.active) {
-    const tDir = new THREE.Vector3().subVectors(grapple.anchor, player.pos);
-    const dist = tDir.length();
-    tDir.normalize();
-    player.vel.addScaledVector(tDir, CONFIG.PHYSICS.HOOK_PULL * (dist / 80) * dt);
-    updateRope();
-  }
-
-  // Air drag — exponential
-  const airDecay = Math.exp(-CONFIG.PHYSICS.AIR_DRAG * dt);
-  player.vel.x  *= airDecay;
-  player.vel.z  *= airDecay;
-  player.vel.y  *= Math.exp(-CONFIG.PHYSICS.AIR_DRAG * 0.2 * dt);
-
-  // Speed cap
-  const spd = player.vel.length();
-  if (spd > CONFIG.PHYSICS.MAX_SPEED) player.vel.multiplyScalar(CONFIG.PHYSICS.MAX_SPEED / spd);
-
-  player.pos.addScaledVector(player.vel, dt);
-
-  // Ground
-  if (player.pos.y <= player.height) {
-    player.pos.y  = player.height;
-    player.vel.y  = 0;
-    const gDecay   = Math.exp(-CONFIG.PHYSICS.GROUND_FRICTION * dt);
-    player.vel.x  *= gDecay;
-    player.vel.z  *= gDecay;
-  }
-
-  camera.position.copy(player.pos);
-
-  // Look stick
-  if (stickR.active) {
-    player.yaw   -= stickR.dx * CONFIG.LOOK.STICK_SENS;
-    player.pitch -= stickR.dy * CONFIG.LOOK.STICK_SENS;
-    player.pitch  = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, player.pitch));
-  }
-
-  // Look momentum — decays by GROUND_FRICTION
-  if (!stickR.active) {
-    const mAbs = Math.abs(stickR.momentumDx) + Math.abs(stickR.momentumDy);
-    if (mAbs > 0.0005) {
-      const fd = Math.exp(-CONFIG.PHYSICS.GROUND_FRICTION * dt);
-      stickR.momentumDx *= fd; stickR.momentumDy *= fd;
-      player.yaw   -= stickR.momentumDx * CONFIG.LOOK.STICK_SENS;
-      player.pitch -= stickR.momentumDy * CONFIG.LOOK.STICK_SENS;
-      player.pitch  = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, player.pitch));
-    } else {
-      stickR.momentumDx = 0; stickR.momentumDy = 0;
-    }
-  }
-
-  // Slash cooldown
-  if (player.slashCooldown > 0) player.slashCooldown -= dt;
-
-  // Camera shake
-  if (shakeDur > 0) {
-    shakeDur -= dt;
-    const s = shakeInten * Math.min(1, shakeDur / 0.15);
-    camera.position.x += (Math.random()-0.5) * s * 0.04;
-    camera.position.y += (Math.random()-0.5) * s * 0.04;
-  }
-
-  // Accel for FX
-  const spdNow = player.vel.length();
-  const accel  = (spdNow - player.prevSpeed) / dt;
-  updateInertiaFX(dt, accel);
-
-  // HUD
-  document.getElementById('hud-spd').innerText   = `SPD: ${spdNow.toFixed(1)}`;
-  document.getElementById('hud-alt').innerText   = `ALT: ${player.pos.y.toFixed(1)}`;
-  document.getElementById('hud-accel').innerText = `ACCEL: ${accel.toFixed(1)}`;
-  document.getElementById('hud-boost').innerText = `BOOST: ${Math.round(player.boostIntensity * 100)}%`;
-
-  const status = player.boostIntensity > 0.05 ? 'BOOST'
-               : grapple.active               ? 'ANCHORED'
-               : onGround                     ? 'GROUNDED'
-               :                               'AIR';
-  document.getElementById('hud-status').innerText = status;
-
-  player.prevSpeed = spdNow;
-  scanTargets();
-}
-
-// ── GRAPPLE ───────────────────────────────────────────────
-function scanTargets() {
-  raycaster.setFromCamera(centerNDC, camera);
-  const hits = raycaster.intersectObjects(scene.children, true);
-  const hit  = hits.find(h => h.distance < CONFIG.PHYSICS.MAX_ROPE_DIST && h.object.userData?.collidable);
-  document.getElementById('crosshair').classList.toggle('locked', !!hit);
-  return hit ? hit.point : null;
-}
-
-function fireGrapple() {
-  const target = scanTargets();
-  if (!target) return;
-  releaseGrapple();
-  grapple.active = true;
-  grapple.anchor.copy(target);
-  const geo    = new THREE.BufferGeometry().setFromPoints([player.pos, grapple.anchor]);
-  grapple.mesh = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: CONFIG.COLORS.ROPE }));
-  scene.add(grapple.mesh);
-
-  // Grapple fire burst
-  const toA = new THREE.Vector3().subVectors(grapple.anchor, player.pos).normalize();
-  for (let b = 0; b < CONFIG.SMOKE.GRAPPLE_BURST && particles.length < CONFIG.SMOKE.MAX_PARTICLES; b++) {
-    particles.push({
-      pos: player.pos.clone().addScaledVector(toA, 1.5)
-        .add(new THREE.Vector3((Math.random()-0.5)*3, Math.random()*3, (Math.random()-0.5)*3)),
-      vel: new THREE.Vector3(
-        toA.x*(3+Math.random()*8)+(Math.random()-0.5)*4,
-        toA.y*(3+Math.random()*8)+2+Math.random()*5,
-        toA.z*(3+Math.random()*8)+(Math.random()-0.5)*4
-      ),
-      life: 0.5+Math.random(), maxLife: 1.5, blood: false,
-    });
-  }
-}
-
-function releaseGrapple() {
-  grapple.active = false;
-  if (grapple.mesh) {
-    scene.remove(grapple.mesh);
-    grapple.mesh.geometry.dispose();
-    grapple.mesh.material.dispose();
-    grapple.mesh = null;
-  }
-}
-
-function updateRope() {
-  if (!grapple.mesh) return;
-  const arr = grapple.mesh.geometry.attributes.position.array;
-  arr[0] = player.pos.x; arr[1] = player.pos.y - 0.5; arr[2] = player.pos.z;
-  grapple.mesh.geometry.attributes.position.needsUpdate = true;
-}
-
-// ── STICK NORMALIZER ──────────────────────────────────────
-function normalizeStick(rawDx, rawDy) {
-  const R    = CONFIG.LOOK.STICK_RADIUS;
-  const dist = Math.sqrt(rawDx*rawDx + rawDy*rawDy);
-  if (dist === 0) return { dx: 0, dy: 0, vx: 0, vy: 0, mag: 0 };
-  const cap = Math.min(dist, R);
-  const nx  = rawDx / dist;
-  const ny  = rawDy / dist;
-  return { dx: nx*(cap/R), dy: ny*(cap/R), vx: nx, vy: ny, mag: cap/R };
-}
-
-// ── INPUT ─────────────────────────────────────────────────
-function bindInputs() {
-  const knobL  = document.getElementById('knobL');
-  const knobR  = document.getElementById('knobR');
-  const joyLEl = document.getElementById('joyL');
-  const joyREl = document.getElementById('joyR');
-
-  function getBounds(el) {
-    const r = el.getBoundingClientRect();
-    return { cx: r.left+r.width/2, cy: r.top+r.height/2, r: r.width/2+18 };
-  }
-
-  const SLASH_ZONE_Y = () => innerHeight * 0.39;
-
-  document.addEventListener('touchstart', e => {
-    if (e.target.tagName !== 'INPUT') e.preventDefault();
-    for (const t of e.changedTouches) {
-
-      // ── SLASH ZONE — top 39% ──────────────────────────
-      if (t.clientY < SLASH_ZONE_Y()) {
-        slashTouches[t.identifier] = [{ x: t.clientX, y: t.clientY, age: 0 }];
-        slashHistory.push({ x: t.clientX, y: t.clientY, age: 0 });
-        continue;
-      }
-
-      // ── LEFT STICK ────────────────────────────────────
-      const lb = getBounds(joyLEl);
-      if (Math.hypot(t.clientX-lb.cx, t.clientY-lb.cy) < lb.r && !stickL.active) {
-        stickL.active = true; stickL.id = t.identifier;
-        stickL.cx = lb.cx; stickL.cy = lb.cy;
-        knobL.classList.add('active');
-        continue;
-      }
-
-      // ── RIGHT STICK — look + grapple ──────────────────
-      const rb = getBounds(joyREl);
-      if (Math.hypot(t.clientX-rb.cx, t.clientY-rb.cy) < rb.r && !stickR.active) {
-        stickR.active = true; stickR.id = t.identifier;
-        stickR.cx = rb.cx; stickR.cy = rb.cy;
-        stickR.momentumDx = 0; stickR.momentumDy = 0;
-        knobR.classList.add('active');
-        fireGrapple();
-        continue;
-      }
-    }
-  }, { passive: false });
-
-  document.addEventListener('touchmove', e => {
-    e.preventDefault();
-    for (const t of e.changedTouches) {
-
-      // Slash zone tracking
-      if (slashTouches[t.identifier]) {
-        slashTouches[t.identifier].push({ x: t.clientX, y: t.clientY, age: 0 });
-        slashHistory.push({ x: t.clientX, y: t.clientY, age: 0 });
-        continue;
-      }
-
-      if (t.identifier === stickL.id) {
-        const n = normalizeStick(t.clientX-stickL.cx, t.clientY-stickL.cy);
-        stickL.dx = n.dx; stickL.dy = n.dy;
-        knobL.style.transform = `translate(calc(-50% + ${n.vx*n.mag*CONFIG.LOOK.STICK_RADIUS*0.7}px), calc(-50% + ${n.vy*n.mag*CONFIG.LOOK.STICK_RADIUS*0.7}px))`;
-        // Knob turns accent when boost active
-        if (player.boostIntensity > 0.05) knobL.classList.add('boost');
-        else knobL.classList.remove('boost');
-      }
-
-      if (t.identifier === stickR.id) {
-        const n = normalizeStick(t.clientX-stickR.cx, t.clientY-stickR.cy);
-        stickR.dx = n.dx; stickR.dy = n.dy;
-        knobR.style.transform = `translate(calc(-50% + ${n.vx*n.mag*CONFIG.LOOK.STICK_RADIUS*0.7}px), calc(-50% + ${n.vy*n.mag*CONFIG.LOOK.STICK_RADIUS*0.7}px))`;
-      }
-    }
-  }, { passive: false });
-
-  document.addEventListener('touchend', e => {
-    for (const t of e.changedTouches) {
-
-      // Slash detection on finger lift
-      if (slashTouches[t.identifier]) {
-        detectAndPerformSlash(slashTouches[t.identifier]);
-        delete slashTouches[t.identifier];
-        continue;
-      }
-
-      if (t.identifier === stickL.id) {
-        stickL.active = false; stickL.id = null; stickL.dx = 0; stickL.dy = 0;
-        knobL.style.transform = 'translate(-50%,-50%)';
-        knobL.classList.remove('active'); knobL.classList.remove('boost');
-      }
-
-      if (t.identifier === stickR.id) {
-        stickR.momentumDx = stickR.dx;
-        stickR.momentumDy = stickR.dy;
-        stickR.active = false; stickR.id = null; stickR.dx = 0; stickR.dy = 0;
-        knobR.style.transform = 'translate(-50%,-50%)';
-        knobR.classList.remove('active');
-        releaseGrapple();
-      }
-    }
-  });
-
-  document.addEventListener('touchcancel', () => {
-    stickL.active = false; stickL.dx = 0; stickL.dy = 0;
-    knobL.style.transform = 'translate(-50%,-50%)';
-    knobL.classList.remove('active'); knobL.classList.remove('boost');
-    stickR.momentumDx = stickR.dx; stickR.momentumDy = stickR.dy;
-    stickR.active = false; stickR.dx = 0; stickR.dy = 0;
-    knobR.style.transform = 'translate(-50%,-50%)';
-    knobR.classList.remove('active');
-    releaseGrapple();
-    Object.keys(slashTouches).forEach(k => delete slashTouches[k]);
-  });
-
-  // ── DESKTOP ───────────────────────────────────────────
-  document.getElementById('canvas-container').addEventListener('mousedown', e => {
-    if (!isPointerLocked) { document.body.requestPointerLock(); return; }
-    if (e.button === 0) fireGrapple();
-    if (e.button === 2) input.space = true;
-  });
-  document.addEventListener('mouseup', e => {
-    if (e.button === 0) releaseGrapple();
-    if (e.button === 2) input.space = false;
-  });
-
-  // Desktop slash — mouse swipe in top 39%
-  let mouseSlashHistory = [];
-  let mouseSlashing = false;
-  document.addEventListener('mousemove', e => {
-    if (isPointerLocked) {
-      player.yaw   -= e.movementX * 0.002;
-      player.pitch -= e.movementY * 0.002;
-      player.pitch  = Math.max(-Math.PI/2, Math.min(Math.PI/2, player.pitch));
-    }
-    if (!isPointerLocked && e.buttons === 1 && e.clientY < innerHeight * 0.39) {
-      mouseSlashHistory.push({ x: e.clientX, y: e.clientY, age: 0 });
-      slashHistory.push({ x: e.clientX, y: e.clientY, age: 0 });
-      mouseSlashing = true;
-    }
-  });
-  document.addEventListener('mouseup', () => {
-    if (mouseSlashing) {
-      detectAndPerformSlash(mouseSlashHistory);
-      mouseSlashHistory = []; mouseSlashing = false;
-    }
-  });
-
-  document.addEventListener('pointerlockchange', () => {
-    isPointerLocked = document.pointerLockElement === document.body;
-  });
-  window.addEventListener('keydown', e => {
-    if (e.code === 'KeyW')  input.w     = true;
-    if (e.code === 'KeyS')  input.s     = true;
-    if (e.code === 'KeyA')  input.a     = true;
-    if (e.code === 'KeyD')  input.d     = true;
-    if (e.code === 'Space') { input.space = true; e.preventDefault(); }
-    if (e.code === 'KeyF')  { // desktop slash test
-      detectAndPerformSlash([
-        {x:100, y:50, age:0}, {x:200, y:50, age:1}, {x:300, y:50, age:2}
-      ]);
-    }
-  });
-  window.addEventListener('keyup', e => {
-    if (e.code === 'KeyW')  input.w     = false;
-    if (e.code === 'KeyS')  input.s     = false;
-    if (e.code === 'KeyA')  input.a     = false;
-    if (e.code === 'KeyD')  input.d     = false;
-    if (e.code === 'Space') input.space = false;
-  });
-  window.addEventListener('contextmenu', e => e.preventDefault());
-  window.addEventListener('resize', () => {
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-    slashCanvas.width = innerWidth; slashCanvas.height = innerHeight;
-  });
-}
-
-// ── MAIN LOOP ─────────────────────────────────────────────
-function engineTick() {
-  requestAnimationFrame(engineTick);
-  let dt = clock.getDelta();
-  if (dt > 0.1) dt = 0.1;
-
-  updatePhysics(dt);
-  updateDummies(dt);
-  updateParticles(dt);
-  drawSlashTrail();
-  renderer.render(scene, camera);
-}
-
-window.onload = init;
-</script>
+        setHFov(CFG.hFov);
+        let currentHFov = CFG.hFov;
+
+        const camTarget = new THREE.Vector3();
+        const clock = new THREE.Clock();
+        const downRay = new THREE.Raycaster();
+        downRay.ray.direction.set(0, -1, 0);
+        const aimRay = new THREE.Raycaster();
+        const cNDC = new THREE.Vector2(0, 0);
+
+        const sc = document.getElementById('slash-canvas');
+        sc.width = innerWidth;
+        sc.height = innerHeight;
+        const sctx = sc.getContext('2d');
+
+        // ════════════════════════════════════════════════════════
+        //  LIGHTS
+        // ════════════════════════════════════════════════════════
+        let ambientLight, sunLight;
+
+        // ════════════════════════════════════════════════════════
+        //  PLAYER STATE
+        // ════════════════════════════════════════════════════════
+        const player = {
+            pos: new THREE.Vector3(0, 10, 40),
+            vel: new THREE.Vector3(),
+            yaw: 0,
+            pitch: 0,
+            roll: 0,
+            height: 1,
+            capsuleRadius: 1.5,
+            capsuleHalfHeight: 2,
+            boostIntensity: 0,
+            prevSpeed: 0,
+            slashCD: 0,
+        };
+
+        // ════════════════════════════════════════════════════════
+        //  GRAPPLE
+        // ════════════════════════════════════════════════════════
+        const grapple = {
+            active: false,
+            anchor: new THREE.Vector3(),
+            line: null,
+            isSmoke: false,
+            smokeIdx: -1,
+        };
+
+        // ════════════════════════════════════════════════════════
+        //  STICKS
+        // ════════════════════════════════════════════════════════
+        const stickL = { on: false, id: null, cx: 0, cy: 0, dx: 0, dy: 0 };
+        const stickR = { on: false, id: null, cx: 0, cy: 0, dx: 0, dy: 0, momX: 0, momY: 0 };
+
+        // ════════════════════════════════════════════════════════
+        //  GAME STATE
+        // ════════════════════════════════════════════════════════
+        let killCount = 0;
+        const pillars = [];
+        const dummies = [];
+        const particles = [];
+        let pGeo, pMat, pPoints, pAccum = 0;
+        let terrainMesh = null;
+        const slashTouches = {};
+        let slashHistory = [];
+
+        // ════════════════════════════════════════════════════════
+        //  WORLD BUILD
+        // ════════════════════════════════════════════════════════
+        function clearPillars() {
+            for (const p of pillars) { scene.remove(p);
+                p.geometry.dispose(); }
+            pillars.length = 0;
+        }
+
+        function buildWorld() {
+            if (!ambientLight) {
+                ambientLight = new THREE.AmbientLight(CFG.ambientColor, CFG.ambientInt);
+                scene.add(ambientLight);
+                sunLight = new THREE.DirectionalLight(CFG.sunColor, CFG.sunInt);
+                sunLight.position.set(CFG.sunX, CFG.sunY, CFG.sunZ);
+                scene.add(sunLight);
+
+                const floor = new THREE.Mesh(
+                    new THREE.PlaneGeometry(80000, 80000),
+                    new THREE.MeshBasicMaterial({ color: CFG.groundColor })
+                );
+                floor.rotation.x = -Math.PI / 2;
+                floor.position.y = -0.1;
+                floor.userData.floor = true;
+                scene.add(floor);
+            }
+
+            clearPillars();
+
+            const trunkMat = new THREE.MeshLambertMaterial({ color: CFG.pillarColor });
+            const canopyPalette = [0x4F6B3A, 0x5C7A42, 0x3E5630, 0x6B8049, 0x47633A];
+            const MAP = WORLD.size;
+
+            const gridX = Math.ceil(Math.sqrt(CFG.clusterCount));
+            const gridZ = Math.ceil(CFG.clusterCount / gridX);
+            const centers = [];
+            for (let gx = 0; gx < gridX && centers.length < CFG.clusterCount; gx++) {
+                for (let gz = 0; gz < gridZ && centers.length < CFG.clusterCount; gz++) {
+                    const zw = MAP / gridX,
+                        zh = MAP / gridZ;
+                    centers.push({
+                        x: -MAP / 2 + zw * (gx + 0.5) + (Math.random() - 0.5) * zw * 0.5,
+                        z: -MAP / 2 + zh * (gz + 0.5) + (Math.random() - 0.5) * zh * 0.5,
+                        density: 0.6 + Math.random() * 1.2,
+                    });
+                }
+            }
+
+            const perCluster = Math.floor(CFG.pillarCount / Math.max(centers.length, 1));
+            for (const c of centers) {
+                const maxR = CFG.clusterRadius + Math.random() * 600;
+                const count = Math.floor(perCluster * c.density);
+                for (let i = 0; i < count; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = Math.pow(Math.random(), 1.5) * maxR;
+                    const px = c.x + Math.cos(angle) * dist;
+                    const pz = c.z + Math.sin(angle) * dist;
+                    if (Math.abs(px) > MAP / 2 || Math.abs(pz) > MAP / 2) continue;
+
+                    const h = CFG.treeHMin + Math.pow(Math.random(), 2.2) * (CFG.treeHMax - CFG.treeHMin);
+                    const diaBase = 10 + h * 0.03 + Math.random() * 8;
+                    const diaTop = diaBase * (0.5 + Math.random() * 0.25);
+                    const tMat = trunkMat.clone();
+                    tMat.color.multiplyScalar(0.9 + Math.random() * 0.2);
+                    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(diaTop / 2, diaBase / 2, h, 6),
+                    tMat);
+                    trunk.position.set(px, h / 2, pz);
+                    trunk.rotation.y = Math.random() * Math.PI * 2;
+                    trunk.userData.collidable = true;
+                    trunk.userData.pillarH = h;
+                    trunk.userData.width = diaBase;
+                    trunk.userData.depth = diaBase;
+                    trunk.geometry.parameters = trunk.geometry.parameters || {};
+                    trunk.geometry.parameters.width = diaBase;
+                    trunk.geometry.parameters.depth = diaBase;
+                    scene.add(trunk);
+                    pillars.push(trunk);
+
+                    if (h > 220 && Math.random() < 0.8) {
+                        const cMat = new THREE.MeshLambertMaterial({ color: canopyPalette[Math.floor(Math.random() *
+                                canopyPalette.length)] });
+                        if (Math.random() < 0.5) {
+                            const canopyH = h * (0.25 + Math.random() * 0.2),
+                                canopyR = diaBase * (1.8 + Math.random() * 1.2);
+                            const cone = new THREE.Mesh(new THREE.ConeGeometry(canopyR, canopyH, 7), cMat);
+                            cone.position.set(px, h + canopyH * 0.35, pz);
+                            scene.add(cone);
+                        } else {
+                            const blobCount = 2 + Math.floor(Math.random() * 2),
+                                canopyR = diaBase * (1.5 + Math.random());
+                            for (let b = 0; b < blobCount; b++) {
+                                const blob = new THREE.Mesh(new THREE.SphereGeometry(canopyR * (0.7 + Math.random() *
+                                        0.5), 6, 5), cMat);
+                                blob.position.set(px + (Math.random() - 0.5) * canopyR * 0.8, h + canopyR * 0.4 + (Math
+                                    .random() - 0.5) * canopyR * 0.5, pz + (Math.random() - 0.5) * canopyR * 0.8);
+                                scene.add(blob);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  TERRAIN
+        // ════════════════════════════════════════════════════════
+        function sampleFloorY(wx, wz) {
+            if (!terrainMesh) return 0;
+            downRay.ray.origin.set(wx, 99999, wz);
+            const hits = downRay.intersectObject(terrainMesh, false);
+            return hits.length ? hits[0].point.y : 0;
+        }
+
+        function resampleEntitiesToTerrain() {
+            for (const p of pillars) {
+                const baseY = sampleFloorY(p.position.x, p.position.z);
+                p.position.y = baseY + p.userData.pillarH / 2;
+            }
+            for (const d of dummies) {
+                if (d.state === 'RAGDOLL') continue;
+                const baseY = sampleFloorY(d.pos.x, d.pos.z);
+                d.pos.y = baseY + CFG.dummyHeight / 2;
+                d.floorY = d.pos.y;
+                d.mesh.position.copy(d.pos);
+                if (d.hbMesh) d.hbMesh.position.copy(d.pos);
+            }
+            const pb = sampleFloorY(player.pos.x, player.pos.z);
+            if (player.pos.y < pb + player.height) { player.pos.y = pb + player.height;
+                player.vel.set(0, 0, 0); }
+        }
+
+        function buildTerrainFromJSON(data) {
+            const meta = data.exportMeta,
+                points = data.vertexDataMatrix,
+                d = meta.systemDensity;
+            const size = meta.physicalGridSize,
+                geo = new THREE.BufferGeometry();
+            const verts = new Float32Array(d * d * 3),
+                colors = new Float32Array(d * d * 3),
+                indices = [];
+            const half = size / 2,
+                step = size / (d - 1);
+            for (const pt of points) {
+                const ix = pt.gridIndex.x,
+                    iy = pt.gridIndex.y,
+                    vi = iy * d + ix;
+                verts[vi * 3] = -half + ix * step;
+                verts[vi * 3 + 1] = pt.elevationNormalized * 50;
+                verts[vi * 3 + 2] = -half + iy * step;
+                const col = pt.colorRGB;
+                colors[vi * 3] = col[0];
+                colors[vi * 3 + 1] = col[1];
+                colors[vi * 3 + 2] = col[2];
+            }
+            for (let row = 0; row < d - 1; row++)
+                for (let col = 0; col < d - 1; col++) {
+                    const a = row * d + col,
+                        b = a + 1,
+                        c = (row + 1) * d + col,
+                        e = c + 1;
+                    indices.push(a, c, b, b, c, e);
+                }
+            geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+            geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geo.setIndex(indices);
+            geo.computeVertexNormals();
+            const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE
+            .DoubleSide }));
+            mesh.userData.collidable = true;
+            const ws = WORLD.size / size;
+            mesh.scale.set(ws, 1, ws);
+            mesh.updateMatrixWorld();
+            return mesh;
+        }
+
+        function buildTerrainFromImage(file) {
+            const reader = new FileReader();
+            reader.onload = e => {
+                const img = new Image();
+                img.onload = () => {
+                    const G = 144,
+                        cv = document.createElement('canvas');
+                    cv.width = G;
+                    cv.height = G;
+                    const cx = cv.getContext('2d');
+                    cx.drawImage(img, 0, 0, G, G);
+                    const px = cx.getImageData(0, 0, G, G).data,
+                        heights = new Float32Array(G * G);
+                    for (let i = 0; i < G * G; i++) heights[i] = (0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 *
+                        px[i * 4 + 2]) / 255;
+                    const size = WORLD.size,
+                        half = size / 2,
+                        step = size / (G - 1);
+                    const geo = new THREE.BufferGeometry(),
+                        verts = new Float32Array(G * G * 3),
+                        colors = new Float32Array(G * G * 3),
+                        idxs = [];
+                    let mn = 1,
+                        mx = 0;
+                    for (let i = 0; i < G * G; i++) { if (heights[i] < mn) mn = heights[i]; if (heights[i] > mx) mx =
+                            heights[i]; }
+                    const hr = Math.max(mx - mn, 0.0001);
+                    for (let row = 0; row < G; row++)
+                        for (let col = 0; col < G; col++) {
+                            const vi = row * G + col;
+                            verts[vi * 3] = -half + col * step;
+                            verts[vi * 3 + 1] = heights[vi] * 500;
+                            verts[vi * 3 + 2] = -half + row * step;
+                            const t = (heights[vi] - mn) / hr;
+                            colors[vi * 3] = 0.36 + t * 0.42;
+                            colors[vi * 3 + 1] = 0.48 + t * 0.29;
+                            colors[vi * 3 + 2] = 0.44 + t * 0.25;
+                        }
+                    for (let row = 0; row < G - 1; row++)
+                        for (let col = 0; col < G - 1; col++) {
+                            const a = row * G + col,
+                                b = a + 1,
+                                c = (row + 1) * G + col,
+                                dd = c + 1;
+                            idxs.push(a, c, b, b, c, dd);
+                        }
+                    geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+                    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                    geo.setIndex(idxs);
+                    geo.computeVertexNormals();
+                    if (terrainMesh) scene.remove(terrainMesh);
+                    terrainMesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE
+                            .DoubleSide }));
+                    terrainMesh.userData.collidable = true;
+                    scene.add(terrainMesh);
+                    document.getElementById('terrain-label').textContent = file.name;
+                    resampleEntitiesToTerrain();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function loadTerrainFile(file) {
+            if (file.type === 'application/json' || file.name.endsWith('.json')) {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        if (!data.exportMeta || !data.vertexDataMatrix) { alert('Invalid JSON'); return; }
+                        if (terrainMesh) scene.remove(terrainMesh);
+                        terrainMesh = buildTerrainFromJSON(data);
+                        scene.add(terrainMesh);
+                        document.getElementById('terrain-label').textContent = file.name;
+                        resampleEntitiesToTerrain();
+                    } catch (err) { alert('JSON parse failed: ' + err.message); }
+                };
+                reader.readAsText(file);
+            } else { buildTerrainFromImage(file); }
+        }
+
+        document.getElementById('terrain-btn').addEventListener('click', () => document.getElementById('terrain-file')
+            .click());
+        document.getElementById('terrain-file').addEventListener('change', e => { if (e.target.files.length)
+                loadTerrainFile(e.target.files[0]); });
+
+        // ════════════════════════════════════════════════════════
+        //  PARTICLES
+        // ════════════════════════════════════════════════════════
+        function makeSmokeTex() {
+            const cv = document.createElement('canvas');
+            cv.width = 128;
+            cv.height = 128;
+            const cx = cv.getContext('2d'),
+                g = cx.createRadialGradient(64, 64, 0, 64, 64, 64);
+            g.addColorStop(0, 'rgba(255,255,255,1)');
+            g.addColorStop(0.2, 'rgba(230,242,255,0.85)');
+            g.addColorStop(0.5, 'rgba(190,215,240,0.4)');
+            g.addColorStop(1, 'rgba(150,190,220,0)');
+            cx.fillStyle = g;
+            cx.fillRect(0, 0, 128, 128);
+            const t = new THREE.CanvasTexture(cv);
+            t.needsUpdate = true;
+            return t;
+        }
+
+        function initParticles() {
+            const max = CFG.smokeMax;
+            pGeo = new THREE.BufferGeometry();
+            pGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(max * 3), 3));
+            pGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(max * 3), 3));
+            pGeo.setDrawRange(0, 0);
+            pMat = new THREE.PointsMaterial({ size: CFG.smokeSize, map: makeSmokeTex(), vertexColors: true,
+                blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.78,
+                sizeAttenuation: true });
+            pPoints = new THREE.Points(pGeo, pMat);
+            pPoints.frustumCulled = false;
+            scene.add(pPoints);
+        }
+
+        function emit(pos, vel, isBlood, lifeMult) {
+            if (particles.length >= CFG.smokeMax) return;
+            const base = isBlood ? CFG.bloodLife : CFG.lifeMin + Math.random() * (CFG.lifeMax - CFG.lifeMin);
+            const life = base * (lifeMult || 1),
+                sp = isBlood ? CFG.spread * 1.4 : CFG.spread;
+            particles.push({
+                pos: pos.clone(),
+                vel: new THREE.Vector3(vel.x + (Math.random() - 0.5) * sp * 2, vel.y + Math.random() * CFG.upDrift + (
+                    Math.random() - 0.5) * sp, vel.z + (Math.random() - 0.5) * sp * 2),
+                life,
+                maxLife: life,
+                blood: isBlood,
+            });
+        }
+
+        function emitBlood(pos, vel) {
+            for (let i = 0; i < CFG.bloodBurst && particles.length < CFG.smokeMax; i++) {
+                const splat = vel.clone().multiplyScalar(0.3 + Math.random() * 0.6)
+                    .add(new THREE.Vector3((Math.random() - 0.5) * 12, Math.random() * 8, (Math.random() - 0.5) * 12));
+                emit(pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2, Math.random() * 2, (Math.random() - 0.5) *
+                    2)), splat, true);
+            }
+        }
+
+        function updateParticles(dt) {
+            const speed = player.vel.length();
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.life -= dt;
+                if (p.life <= 0) {
+                    if (grapple.isSmoke && grapple.smokeIdx === i) releaseGrapple();
+                    particles.splice(i, 1);
+                    if (grapple.isSmoke && grapple.smokeIdx > i) grapple.smokeIdx--;
+                    continue;
+                }
+                p.pos.x += p.vel.x * dt;
+                p.pos.y += p.vel.y * dt;
+                p.pos.z += p.vel.z * dt;
+                p.vel.x *= Math.exp(-3.2 * dt);
+                p.vel.z *= Math.exp(-3.2 * dt);
+                p.vel.y *= Math.exp(-2.2 * dt);
+                p.vel.y += 1.1 * dt;
+            }
+
+            if (grapple.isSmoke && grapple.smokeIdx >= 0 && grapple.smokeIdx < particles.length) {
+                grapple.anchor.copy(particles[grapple.smokeIdx].pos);
+            }
+
+            let rate = 0;
+            if (speed > 1) { const t = Math.min(1, (speed - 1) / (CFG.maxSpeed - 1)); rate = CFG.smokeBase + t * (CFG
+                    .smokeMaxRate - CFG.smokeBase); }
+            if (player.boostIntensity > 0) rate *= CFG.boostSmokeMult;
+            if (grapple.active) rate += CFG.smokeBase * 0.6;
+
+            if (rate > 0 && particles.length < CFG.smokeMax) {
+                pAccum += rate * dt;
+                const behind = player.vel.clone().normalize().multiplyScalar(-1);
+                if (behind.length() < 0.001) behind.set(0, -0.1, 0);
+                while (pAccum >= 1 && particles.length < CFG.smokeMax) {
+                    pAccum -= 1;
+                    emit(player.pos.clone().addScaledVector(behind, 1 + Math.random() * 2.5), behind.clone()
+                        .multiplyScalar(3 + Math.random() * 6), false);
+                }
+            }
+
+            const pos = pGeo.attributes.position.array,
+                col = pGeo.attributes.color.array;
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i],
+                    i3 = i * 3,
+                    f = p.life / p.maxLife;
+                pos[i3] = p.pos.x;
+                pos[i3 + 1] = p.pos.y;
+                pos[i3 + 2] = p.pos.z;
+                if (p.blood) { col[i3] = 0.9 * f + 0.1;
+                    col[i3 + 1] = 0.02 * f;
+                    col[i3 + 2] = 0.02 * f; } else {
+                    if (grapple.isSmoke && grapple.smokeIdx === i) { col[i3] = 0;
+                        col[i3 + 1] = 0.6 * f + 0.4;
+                        col[i3 + 2] = 1; } else { const b = 0.55 + 0.45 * f;
+                        col[i3] = b * 0.82;
+                        col[i3 + 1] = b * 0.9;
+                        col[i3 + 2] = b; }
+                }
+            }
+            pGeo.attributes.position.needsUpdate = true;
+            pGeo.attributes.color.needsUpdate = true;
+            pGeo.setDrawRange(0, particles.length);
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  DUMMIES
+        // ════════════════════════════════════════════════════════
+        function clearDummies() {
+            for (const d of dummies) {
+                scene.remove(d.mesh);
+                d.mesh.geometry.dispose();
+                if (d.hbMesh) { scene.remove(d.hbMesh);
+                    d.hbMesh.geometry.dispose();
+                    d.hbMesh.material.dispose(); }
+            }
+            dummies.length = 0;
+        }
+
+        function spawnDummies() {
+            clearDummies();
+            const geo = new THREE.CylinderGeometry(CFG.dummyRadius, CFG.dummyRadius, CFG.dummyHeight, 9);
+            const mat = new THREE.MeshLambertMaterial({ color: CFG.dummyColor });
+            for (let i = 0; i < CFG.dummyCount; i++) {
+                const mesh = new THREE.Mesh(geo, mat.clone());
+                const onGround = Math.random() < 0.3;
+                let px, pz, floorY;
+                if (onGround || !pillars.length) {
+                    px = (Math.random() - 0.5) * WORLD.size;
+                    pz = (Math.random() - 0.5) * WORLD.size;
+                    floorY = sampleFloorY(px, pz);
+                } else {
+                    const pillar = pillars[Math.floor(Math.random() * pillars.length)];
+                    px = pillar.position.x + (Math.random() - 0.5) * 35;
+                    pz = pillar.position.z + (Math.random() - 0.5) * 35;
+                    floorY = pillar.userData.pillarH;
+                }
+                const py = floorY + CFG.dummyHeight / 2;
+                mesh.position.set(px, py, pz);
+                mesh.userData.collidable = true;
+                scene.add(mesh);
+                const hbMesh = new THREE.Mesh(
+                    new THREE.BoxGeometry(CFG.dummyRadius * 2, CFG.dummyHeight, CFG.dummyRadius * 2),
+                    new THREE.MeshBasicMaterial({ color: 0xFF4444, wireframe: true, transparent: true, opacity: 0.55,
+                        depthTest: true, depthWrite: false })
+                );
+                hbMesh.position.set(px, py, pz);
+                scene.add(hbMesh);
+                dummies.push({ mesh, hbMesh, pos: new THREE.Vector3(px, py, pz), vel: new THREE.Vector3(), floorY: py,
+                    state: 'IDLE', timer: 0 });
+            }
+        }
+
+        function ragdoll(d, impulse) {
+            if (d.state !== 'IDLE') return;
+            d.state = 'RAGDOLL';
+            d.vel.copy(impulse);
+            emitBlood(d.pos, impulse);
+        }
+
+        function updateDummies(dt) {
+            for (let i = dummies.length - 1; i >= 0; i--) {
+                const d = dummies[i];
+                if (d.state === 'IDLE') {
+                    if (player.pos.distanceTo(d.pos) < CFG.dummyProxKill) {
+                        ragdoll(d, player.vel.clone().multiplyScalar(0.7));
+                        killCount++;
+                        document.getElementById('kill-count').textContent = killCount;
+                    }
+                    continue;
+                }
+                if (d.state === 'RAGDOLL') {
+                    d.vel.y += CFG.gravity * dt;
+                    const dr = Math.exp(-CFG.ragdollDrag * dt);
+                    d.vel.x *= dr;
+                    d.vel.z *= dr;
+                    d.pos.addScaledVector(d.vel, dt);
+                    d.mesh.position.copy(d.pos);
+                    d.hbMesh.position.copy(d.pos);
+                    if (d.vel.length() > 0.5) { d.mesh.rotation.z = d.vel.x * 0.04;
+                        d.mesh.rotation.x = -d.vel.z * 0.04;
+                        d.hbMesh.rotation.copy(d.mesh.rotation); }
+                    const terrFloor = sampleFloorY(d.pos.x, d.pos.z) + CFG.dummyHeight / 2;
+                    let floor = terrFloor;
+                    for (const p of pillars) {
+                        const hw = p.geometry.parameters.width / 2 + 70;
+                        if (Math.abs(d.pos.x - p.position.x) < hw && Math.abs(d.pos.z - p.position.z) < hw)
+                            floor = Math.max(floor, p.userData.pillarH + CFG.dummyHeight / 2);
+                    }
+                    if (d.pos.y <= floor) { d.pos.y = floor;
+                        d.vel.y = -d.vel.y * 0.15;
+                        d.vel.x *= 0.55;
+                        d.vel.z *= 0.55; if (Math.abs(d.vel.y) < 6) d.vel.y = 0; }
+                    if (Math.random() < 0.35 && particles.length < CFG.smokeMax)
+                        emit(d.pos.clone(), new THREE.Vector3((Math.random() - 0.5) * 1.2, 0.4 + Math.random() * 1.8, (
+                            Math.random() - 0.5) * 1.2), true, 0.5);
+                    if (d.vel.length() < CFG.settleSpeed) { d.state = 'SETTLED';
+                        d.timer = 0; }
+                    continue;
+                }
+                if (d.state === 'SETTLED') { d.timer += dt; if (d.timer > CFG.despawnTime) d.state = 'DEAD'; continue; }
+                if (d.state === 'DEAD') {
+                    emitBlood(d.pos, new THREE.Vector3(0, 3, 0));
+                    scene.remove(d.mesh);
+                    d.mesh.geometry.dispose();
+                    scene.remove(d.hbMesh);
+                    d.hbMesh.geometry.dispose();
+                    d.hbMesh.material.dispose();
+                    dummies.splice(i, 1);
+                }
+            }
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  SLASH
+        // ════════════════════════════════════════════════════════
+        function drawSlash() {
+            sctx.clearRect(0, 0, sc.width, sc.height);
+            for (const p of slashHistory) p.age++;
+            slashHistory = slashHistory.filter(p => p.age < 10);
+            if (slashHistory.length < 2) return;
+            sctx.shadowBlur = 10;
+            sctx.shadowColor = 'rgba(255,10,10,0.85)';
+            for (let i = 1; i < slashHistory.length; i++) {
+                const a = slashHistory[i - 1],
+                    b = slashHistory[i],
+                    f = (10 - b.age) / 10;
+                sctx.beginPath();
+                sctx.moveTo(a.x, a.y);
+                sctx.lineTo(b.x, b.y);
+                sctx.strokeStyle = `rgba(255,20,20,${f})`;
+                sctx.lineWidth = f * 4;
+                sctx.lineCap = 'round';
+                sctx.stroke();
+            }
+            sctx.shadowBlur = 0;
+        }
+
+        function trySlash(hist) {
+            if (player.slashCD > 0) return;
+            const recent = hist.filter(p => p.age < CFG.swipeFrames);
+            if (recent.length < 3) return;
+            const dx = recent[recent.length - 1].x - recent[0].x,
+                dy = recent[recent.length - 1].y - recent[0].y;
+            if (Math.sqrt(dx * dx + dy * dy) < CFG.swipePx) return;
+            player.slashCD = CFG.bladeCooldown;
+            const fwd = new THREE.Vector3();
+            camera.getWorldDirection(fwd);
+            for (const d of dummies) {
+                if (d.state !== 'IDLE') continue;
+                const toD = new THREE.Vector3().subVectors(d.pos, player.pos);
+                if (toD.length() > CFG.bladeRadius) continue;
+                toD.normalize();
+                if (fwd.dot(toD) < CFG.facingDot) continue;
+                const imp = player.vel.clone().multiplyScalar(CFG.bladeImpulse);
+                imp.y += 6;
+                ragdoll(d, imp);
+                killCount++;
+                document.getElementById('kill-count').textContent = killCount;
+            }
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  SMOKE GRAPPLE
+        // ════════════════════════════════════════════════════════
+        function findSmokeTarget() {
+            if (particles.length === 0) return -1;
+            aimRay.setFromCamera(cNDC, camera);
+            const rayOrigin = aimRay.ray.origin;
+            const rayDir = aimRay.ray.direction;
+            const maxDist = CFG.smokeHookDist;
+            const maxAngleCos = 0.97;
+
+            let bestIdx = -1;
+            let bestDist = Infinity;
+
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                const toP = new THREE.Vector3().subVectors(p.pos, rayOrigin);
+                const distToOrigin = toP.length();
+                if (distToOrigin > maxDist) continue;
+                const along = toP.dot(rayDir);
+                if (along < 0) continue;
+                const cosAngle = along / distToOrigin;
+                if (cosAngle < maxAngleCos) continue;
+                if (distToOrigin < bestDist) { bestDist = distToOrigin;
+                    bestIdx = i; }
+            }
+            return bestIdx;
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  GRAPPLE
+        // ════════════════════════════════════════════════════════
+        function scanHit() {
+            aimRay.setFromCamera(cNDC, camera);
+            const hits = aimRay.intersectObjects(scene.children, true);
+            const hit = hits.find(h => h.distance < CFG.maxRopeDist && (h.object.userData.collidable || h.object.userData
+                .floor));
+
+            const smokeIdx = findSmokeTarget();
+            const hasSmokeTarget = smokeIdx >= 0;
+            const hasGeoTarget = !!hit;
+
+            let useSmokeTarget = false;
+            if (hasSmokeTarget && hasGeoTarget) {
+                const smokeDist = player.pos.distanceTo(particles[smokeIdx].pos);
+                useSmokeTarget = smokeDist < hit.distance;
+            } else if (hasSmokeTarget) {
+                useSmokeTarget = true;
+            }
+
+            const xhair = document.getElementById('xhair');
+            if (useSmokeTarget) {
+                xhair.className = 'smoke-locked';
+                return { point: particles[smokeIdx].pos.clone(), isSmoke: true, smokeIdx };
+            } else if (hasGeoTarget) {
+                xhair.className = 'locked';
+                return { point: hit.point, isSmoke: false, smokeIdx: -1 };
+            } else {
+                xhair.className = '';
+                return null;
+            }
+        }
+
+        function fireGrapple() {
+            const result = scanHit();
+            if (!result) return;
+            releaseGrapple();
+            grapple.active = true;
+            grapple.isSmoke = result.isSmoke;
+            grapple.smokeIdx = result.smokeIdx;
+            grapple.anchor.copy(result.point);
+
+            const geo = new THREE.BufferGeometry().setFromPoints([player.pos, grapple.anchor]);
+            const ropeColor = grapple.isSmoke ? 0x00AAFF : CFG.ropeColor;
+            grapple.line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: ropeColor }));
+            scene.add(grapple.line);
+
+            for (let b = 0; b < 70 && particles.length < CFG.smokeMax; b++) {
+                emit(
+                    grapple.anchor.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2, Math.random() * 2, (Math
+                    .random() - 0.5) * 2)),
+                    new THREE.Vector3((Math.random() - 0.5) * 14, Math.random() * 10 + 2, (Math.random() - 0.5) * 14),
+                    false, 1.1
+                );
+            }
+
+            document.getElementById('smoke-grapple-hint').classList.toggle('show', grapple.isSmoke);
+            document.getElementById('knobR').classList.toggle('smoke', grapple.isSmoke);
+        }
+
+        function releaseGrapple() {
+            grapple.active = false;
+            grapple.isSmoke = false;
+            grapple.smokeIdx = -1;
+            if (grapple.line) { scene.remove(grapple.line);
+                grapple.line.geometry.dispose();
+                grapple.line.material.dispose();
+                grapple.line = null; }
+            document.getElementById('smoke-grapple-hint').classList.remove('show');
+            document.getElementById('knobR').classList.remove('smoke');
+        }
+
+        function updateRope() {
+            if (!grapple.line) return;
+            if (grapple.isSmoke && grapple.smokeIdx >= 0 && grapple.smokeIdx < particles.length) {
+                grapple.anchor.copy(particles[grapple.smokeIdx].pos);
+            }
+            const arr = grapple.line.geometry.attributes.position.array;
+            arr[0] = player.pos.x;
+            arr[1] = player.pos.y - 0.5;
+            arr[2] = player.pos.z;
+            arr[3] = grapple.anchor.x;
+            arr[4] = grapple.anchor.y;
+            arr[5] = grapple.anchor.z;
+            grapple.line.geometry.attributes.position.needsUpdate = true;
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  PHYSICS
+        // ════════════════════════════════════════════════════════
+        function physics(dt) {
+            if (dt <= 0) return;
+            player.vel.y += CFG.gravity * dt;
+
+            let mx = 0,
+                mz = 0;
+            if (stickL.on) { mx = stickL.dx;
+                mz = stickL.dy; }
+            const mv = new THREE.Vector3(mx, 0, mz);
+            if (mv.lengthSq() > 1) mv.normalize();
+            mv.applyAxisAngle(new THREE.Vector3(0, 1, 0), player.yaw);
+
+            const terrY = sampleFloorY(player.pos.x, player.pos.z);
+            const ground = player.pos.y <= terrY + player.height + 0.05;
+            const accel = ground ? CFG.accelGround : CFG.accelAir;
+            player.vel.x += mv.x * accel * dt;
+            player.vel.z += mv.z * accel * dt;
+
+            const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+            const right = new THREE.Vector3(forward.z, 0, -forward.x);
+            const hVel = new THREE.Vector3(player.vel.x, 0, player.vel.z);
+            const sideSpeed = hVel.dot(right);
+            const targetRoll = THREE.MathUtils.clamp(sideSpeed * 0.0009, -0.22, 0.22);
+            player.roll = THREE.MathUtils.lerp(player.roll, targetRoll, 0.08);
+
+            player.boostIntensity = 0;
+            if (stickL.on) {
+                const mag = Math.sqrt(stickL.dx * stickL.dx + stickL.dy * stickL.dy);
+                if (mag > 0.05 && (-stickL.dy / mag) > CFG.boostCone) player.boostIntensity = (-stickL.dy / mag) * mag;
+            }
+            if (player.boostIntensity > 0) {
+                const fwd = new THREE.Vector3();
+                camera.getWorldDirection(fwd);
+                player.vel.addScaledVector(fwd, CFG.boostAccel * player.boostIntensity * dt);
+            }
+
+            if (grapple.active) {
+                const toA = new THREE.Vector3().subVectors(grapple.anchor, player.pos);
+                const dist = toA.length();
+                toA.normalize();
+                player.vel.addScaledVector(toA, CFG.hookPull * (dist / 80) * dt);
+                updateRope();
+            }
+
+            player.vel.x *= Math.exp(-CFG.airDrag * dt);
+            player.vel.z *= Math.exp(-CFG.airDrag * dt);
+            player.vel.y *= Math.exp(-CFG.airDrag * 0.12 * dt);
+            const spd = player.vel.length();
+            if (spd > CFG.maxSpeed) player.vel.multiplyScalar(CFG.maxSpeed / spd);
+            player.pos.addScaledVector(player.vel, dt);
+
+            const PR = player.capsuleRadius;
+            for (const p of pillars) {
+                const hw = p.geometry.parameters.width / 2 + PR,
+                    hd = p.geometry.parameters.depth / 2 + PR;
+                const dx = player.pos.x - p.position.x,
+                    dz = player.pos.z - p.position.z;
+                if (Math.abs(dx) > hw + 50 || Math.abs(dz) > hd + 50) continue;
+                if (player.pos.y < -player.capsuleHalfHeight || player.pos.y > p.userData.pillarH + player.height +
+                    player.capsuleHalfHeight) continue;
+                if (Math.abs(dx) < hw && Math.abs(dz) < hd) {
+                    const ox = hw - Math.abs(dx),
+                        oz = hd - Math.abs(dz);
+                    if (ox < oz) {
+                        player.pos.x += dx < 0 ? -ox : ox;
+                        const n = dx < 0 ? -1 : 1;
+                        player.vel.x -= (1 + 0.1) * player.vel.x * n * n;
+                    } else {
+                        player.pos.z += dz < 0 ? -oz : oz;
+                        const n = dz < 0 ? -1 : 1;
+                        player.vel.z -= (1 + 0.1) * player.vel.z * n * n;
+                    }
+                }
+            }
+
+            for (const d of dummies) {
+                if (d.state !== 'IDLE') continue;
+                const ddx = player.pos.x - d.pos.x,
+                    ddz = player.pos.z - d.pos.z;
+                const distXZ = Math.sqrt(ddx * ddx + ddz * ddz),
+                    minDist = player.capsuleRadius + CFG.dummyRadius;
+                if (distXZ < minDist && distXZ > 0.001) { const push = (minDist - distXZ) / distXZ;
+                    player.pos.x += ddx * push;
+                    player.pos.z += ddz * push; }
+            }
+
+            const floorY = sampleFloorY(player.pos.x, player.pos.z) + player.height;
+            if (player.pos.y <= floorY) {
+                player.pos.y = floorY;
+                player.vel.y = 0;
+                player.vel.x *= Math.exp(-CFG.groundFric * dt);
+                player.vel.z *= Math.exp(-CFG.groundFric * dt);
+            }
+
+            const eyePos = player.pos.clone().add(new THREE.Vector3(0, CFG.camEyeOffset, 0));
+            camTarget.lerp(eyePos, CFG.camLag);
+            camera.position.copy(camTarget);
+            camera.rotation.y = player.yaw;
+            camera.rotation.x = player.pitch;
+            camera.rotation.z = -player.roll;
+
+            if (stickR.on) {
+                player.yaw -= stickR.dx * CFG.stickSens;
+                player.pitch -= stickR.dy * CFG.stickSens;
+                player.pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, player.pitch));
+            } else {
+                const m = Math.abs(stickR.momX) + Math.abs(stickR.momY);
+                if (m > 0.0005) {
+                    const fd = Math.exp(-CFG.groundFric * dt);
+                    stickR.momX *= fd;
+                    stickR.momY *= fd;
+                    player.yaw -= stickR.momX * CFG.stickSens;
+                    player.pitch -= stickR.momY * CFG.stickSens;
+                    player.pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, player.pitch));
+                } else { stickR.momX = 0;
+                    stickR.momY = 0; }
+            }
+
+            if (player.slashCD > 0) player.slashCD -= dt;
+
+            const targetHFov = CFG.hFov + Math.min(CFG.hFovMax - CFG.hFov, spd * 0.035);
+            const fovRate = currentHFov < targetHFov ? CFG.fovExpandRate : CFG.fovRecoverRate;
+            currentHFov += (targetHFov - currentHFov) * fovRate;
+            setHFov(currentHFov);
+
+            const alt = player.pos.y - (sampleFloorY(player.pos.x, player.pos.z) + player.height);
+            document.getElementById('hud-spd').textContent = `SPD: ${spd.toFixed(1)}`;
+            document.getElementById('hud-alt').textContent = `ALT: ${alt.toFixed(1)}`;
+            document.getElementById('hud-boost').textContent =
+                `BOOST: ${Math.round(player.boostIntensity * 100)}%`;
+            document.getElementById('hud-status').textContent = player.boostIntensity > 0.05 ? 'BOOST' : grapple
+                .active ? (grapple.isSmoke ? 'SMOKE ANCHOR' : 'ANCHORED') : ground ? 'GROUNDED' : 'AIR';
+            document.getElementById('hud-smoke').textContent =
+                `SMOKE HOOK: ${grapple.isSmoke ? 'ON' : 'OFF'}`;
+
+            player.prevSpeed = spd;
+            scanHit();
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  INPUT
+        // ════════════════════════════════════════════════════════
+        function normStick(rawDx, rawDy) {
+            const R = CFG.stickRadius,
+                dist = Math.sqrt(rawDx * rawDx + rawDy * rawDy);
+            if (dist === 0) return { dx: 0, dy: 0, vx: 0, vy: 0, mag: 0 };
+            const cap = Math.min(dist, R),
+                nx = rawDx / dist,
+                ny = rawDy / dist;
+            return { dx: nx * (cap / R), dy: ny * (cap / R), vx: nx, vy: ny, mag: cap / R };
+        }
+
+        function isUIElement(target) {
+            const cfgPanel = document.getElementById('cfg-panel');
+            const terrainBar = document.getElementById('terrain-bar');
+            return (cfgPanel && cfgPanel.contains(target)) || (terrainBar && terrainBar.contains(target));
+        }
+
+        function bindInput() {
+            const knobL = document.getElementById('knobL'),
+                knobR = document.getElementById('knobR');
+            const joyLEl = document.getElementById('joyL'),
+                joyREl = document.getElementById('joyR');
+            const SLASH_Y = () => innerHeight * 0.65;
+            const KNOB_TRAVEL = () => CFG.stickRadius * 0.68;
+
+            function bounds(el) { const r = el.getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r
+                        .height / 2, r: r.width / 2 + 20 }; }
+
+            document.addEventListener('touchstart', e => {
+                if (isUIElement(e.target)) return;
+                e.preventDefault();
+                for (const t of e.changedTouches) {
+                    if (t.clientY < SLASH_Y()) {
+                        slashTouches[t.identifier] = [{ x: t.clientX, y: t.clientY, age: 0 }];
+                        slashHistory.push({ x: t.clientX, y: t.clientY, age: 0 });
+                        continue;
+                    }
+                    const lb = bounds(joyLEl);
+                    if (!stickL.on && Math.hypot(t.clientX - lb.cx, t.clientY - lb.cy) < lb.r) {
+                        stickL.on = true;
+                        stickL.id = t.identifier;
+                        stickL.cx = lb.cx;
+                        stickL.cy = lb.cy;
+                        continue;
+                    }
+                    const rb = bounds(joyREl);
+                    if (!stickR.on && Math.hypot(t.clientX - rb.cx, t.clientY - rb.cy) < rb.r) {
+                        stickR.on = true;
+                        stickR.id = t.identifier;
+                        stickR.cx = rb.cx;
+                        stickR.cy = rb.cy;
+                        stickR.momX = 0;
+                        stickR.momY = 0;
+                        knobR.classList.add('active');
+                        fireGrapple();
+                        continue;
+                    }
+                }
+            }, { passive: false });
+
+            document.addEventListener('touchmove', e => {
+                if (isUIElement(e.target)) return;
+                e.preventDefault();
+                for (const t of e.changedTouches) {
+                    if (slashTouches[t.identifier]) { slashTouches[t.identifier].push({ x: t.clientX, y: t.clientY,
+                            age: 0 });
+                        slashHistory.push({ x: t.clientX, y: t.clientY, age: 0 }); continue; }
+                    if (t.identifier === stickL.id) {
+                        const n = normStick(t.clientX - stickL.cx, t.clientY - stickL.cy);
+                        stickL.dx = n.dx;
+                        stickL.dy = n.dy;
+                        knobL.style.transform =
+                            `translate(calc(-50% + ${n.vx * n.mag * KNOB_TRAVEL()}px),calc(-50% + ${n.vy * n.mag * KNOB_TRAVEL()}px))`;
+                        if (player.boostIntensity > 0.05) knobL.classList.add('boost');
+                        else knobL.classList.remove('boost');
+                    }
+                    if (t.identifier === stickR.id) {
+                        const n = normStick(t.clientX - stickR.cx, t.clientY - stickR.cy);
+                        stickR.dx = n.dx;
+                        stickR.dy = n.dy;
+                        knobR.style.transform =
+                            `translate(calc(-50% + ${n.vx * n.mag * KNOB_TRAVEL()}px),calc(-50% + ${n.vy * n.mag * KNOB_TRAVEL()}px))`;
+                    }
+                }
+            }, { passive: false });
+
+            document.addEventListener('touchend', e => {
+                if (isUIElement(e.target)) return;
+                for (const t of e.changedTouches) {
+                    if (slashTouches[t.identifier]) { trySlash(slashTouches[t.identifier]); delete slashTouches[t
+                            .identifier]; continue; }
+                    if (t.identifier === stickL.id) { stickL.on = false;
+                        stickL.id = null;
+                        stickL.dx = 0;
+                        stickL.dy = 0;
+                        knobL.style.transform = 'translate(-50%,-50%)';
+                        knobL.classList.remove('boost'); }
+                    if (t.identifier === stickR.id) { stickR.momX = stickR.dx;
+                        stickR.momY = stickR.dy;
+                        stickR.on = false;
+                        stickR.id = null;
+                        stickR.dx = 0;
+                        stickR.dy = 0;
+                        knobR.style.transform = 'translate(-50%,-50%)';
+                        knobR.classList.remove('active');
+                        releaseGrapple(); }
+                }
+            });
+
+            document.addEventListener('touchcancel', () => {
+                stickL.on = false;
+                stickL.dx = 0;
+                stickL.dy = 0;
+                knobL.style.transform = 'translate(-50%,-50%)';
+                knobL.classList.remove('boost');
+                stickR.momX = stickR.dx;
+                stickR.momY = stickR.dy;
+                stickR.on = false;
+                stickR.dx = 0;
+                stickR.dy = 0;
+                knobR.style.transform = 'translate(-50%,-50%)';
+                knobR.classList.remove('active');
+                releaseGrapple();
+                for (const k of Object.keys(slashTouches)) delete slashTouches[k];
+            });
+
+            window.addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight);
+                setHFov(currentHFov);
+                sc.width = innerWidth;
+                sc.height = innerHeight; });
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  CONFIG PANEL
+        // ════════════════════════════════════════════════════════
+        const SLIDER_MAP = [
+            ['s-gravity', 'v-gravity', 'gravity'],
+            ['s-airDrag', 'v-airDrag', 'airDrag'],
+            ['s-groundFric', 'v-groundFric', 'groundFric'],
+            ['s-accelGround', 'v-accelGround', 'accelGround'],
+            ['s-accelAir', 'v-accelAir', 'accelAir'],
+            ['s-boostAccel', 'v-boostAccel', 'boostAccel'],
+            ['s-hookPull', 'v-hookPull', 'hookPull'],
+            ['s-maxRopeDist', 'v-maxRopeDist', 'maxRopeDist'],
+            ['s-maxSpeed', 'v-maxSpeed', 'maxSpeed'],
+            ['s-boostCone', 'v-boostCone', 'boostCone'],
+            ['s-hFov', 'v-hFov', 'hFov', (v) => { currentHFov = v;
+                setHFov(v); }],
+            ['s-hFovMax', 'v-hFovMax', 'hFovMax'],
+            ['s-fovExpandRate', 'v-fovExpandRate', 'fovExpandRate'],
+            ['s-fovRecoverRate', 'v-fovRecoverRate', 'fovRecoverRate'],
+            ['s-camLag', 'v-camLag', 'camLag'],
+            ['s-camEyeOffset', 'v-camEyeOffset', 'camEyeOffset'],
+            ['s-stickSens', 'v-stickSens', 'stickSens'],
+            ['s-stickRadius', 'v-stickRadius', 'stickRadius'],
+            ['s-bladeRadius', 'v-bladeRadius', 'bladeRadius'],
+            ['s-bladeCooldown', 'v-bladeCooldown', 'bladeCooldown'],
+            ['s-swipePx', 'v-swipePx', 'swipePx'],
+            ['s-swipeFrames', 'v-swipeFrames', 'swipeFrames'],
+            ['s-facingDot', 'v-facingDot', 'facingDot'],
+            ['s-bladeImpulse', 'v-bladeImpulse', 'bladeImpulse'],
+            ['s-smokeSize', 'v-smokeSize', 'smokeSize', (v) => { if (pMat) pMat.size = v; }],
+            ['s-smokeMax', 'v-smokeMax', 'smokeMax'],
+            ['s-smokeBase', 'v-smokeBase', 'smokeBase'],
+            ['s-smokeMaxRate', 'v-smokeMaxRate', 'smokeMaxRate'],
+            ['s-boostSmokeMult', 'v-boostSmokeMult', 'boostSmokeMult'],
+            ['s-lifeMin', 'v-lifeMin', 'lifeMin'],
+            ['s-lifeMax', 'v-lifeMax', 'lifeMax'],
+            ['s-upDrift', 'v-upDrift', 'upDrift'],
+            ['s-spread', 'v-spread', 'spread'],
+            ['s-bloodBurst', 'v-bloodBurst', 'bloodBurst'],
+            ['s-bloodLife', 'v-bloodLife', 'bloodLife'],
+            ['s-smokeHookDist', 'v-smokeHookDist', 'smokeHookDist'],
+            ['s-dummyCount', 'v-dummyCount', 'dummyCount'],
+            ['s-dummyProxKill', 'v-dummyProxKill', 'dummyProxKill'],
+            ['s-ragdollDrag', 'v-ragdollDrag', 'ragdollDrag'],
+            ['s-despawnTime', 'v-despawnTime', 'despawnTime'],
+            ['s-ambientInt', 'v-ambientInt', 'ambientInt', (v) => { if (ambientLight) ambientLight.intensity = v; }],
+            ['s-sunInt', 'v-sunInt', 'sunInt', (v) => { if (sunLight) sunLight.intensity = v; }],
+            ['s-sunX', 'v-sunX', 'sunX', (v) => { if (sunLight) sunLight.position.x = v; }],
+            ['s-sunY', 'v-sunY', 'sunY', (v) => { if (sunLight) sunLight.position.y = v; }],
+            ['s-sunZ', 'v-sunZ', 'sunZ', (v) => { if (sunLight) sunLight.position.z = v; }],
+            ['s-fogNear', 'v-fogNear', 'fogNear', (v) => { scene.fog.near = v; }],
+            ['s-fogFar', 'v-fogFar', 'fogFar', (v) => { scene.fog.far = v; }],
+            ['s-pillarCount', 'v-pillarCount', 'pillarCount'],
+            ['s-clusterCount', 'v-clusterCount', 'clusterCount'],
+            ['s-clusterRadius', 'v-clusterRadius', 'clusterRadius'],
+            ['s-treeHMin', 'v-treeHMin', 'treeHMin'],
+            ['s-treeHMax', 'v-treeHMax', 'treeHMax'],
+        ];
+
+        const COLOR_MAP = [
+            ['c-sky', (h) => { scene.background.set(h);
+                scene.fog.color.set(h); }],
+            ['c-ground', (h) => { /* would need floor mesh ref */ }],
+            ['c-pillar', (h) => { pillars.forEach(p => { if (p.material) p.material.color.set(h); }); }],
+            ['c-rope', (h) => { CFG.ropeColor = h; if (grapple.line && !grapple.isSmoke) grapple.line.material.color
+                    .set(h); }],
+            ['c-dummy', (h) => { dummies.forEach(d => d.mesh.material.color.set(h)); }],
+            ['c-ambient', (h) => { if (ambientLight) ambientLight.color.set(h); }],
+            ['c-sun', (h) => { if (sunLight) sunLight.color.set(h); }],
+        ];
+
+        function initPanel() {
+            for (const [sid, vid, key, setter] of SLIDER_MAP) {
+                const slider = document.getElementById(sid),
+                    valEl = document.getElementById(vid);
+                if (!slider || !valEl) continue;
+                slider.value = CFG[key];
+                valEl.textContent = parseFloat(CFG[key]).toFixed(2).replace(/\.?0+$/, '');
+                slider.addEventListener('input', () => {
+                    const v = parseFloat(slider.value);
+                    CFG[key] = v;
+                    valEl.textContent = v.toFixed(2).replace(/\.?0+$/, '');
+                    if (setter) setter(v);
+                });
+            }
+
+            for (const [pid, setter] of COLOR_MAP) {
+                const picker = document.getElementById(pid);
+                if (!picker) continue;
+                picker.addEventListener('input', () => setter(picker.value));
+            }
+
+            const panel = document.getElementById('cfg-panel'),
+                toggle = document.getElementById('cfg-toggle');
+            toggle.addEventListener('click', e => {
+                e.stopPropagation();
+                panel.classList.toggle('open');
+            });
+
+            document.getElementById('btn-respawn').addEventListener('click', () => spawnDummies());
+            document.getElementById('btn-rebuild').addEventListener('click', () => buildWorld());
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  MAIN LOOP
+        // ════════════════════════════════════════════════════════
+        function loop() {
+            requestAnimationFrame(loop);
+            let dt = clock.getDelta();
+            if (dt > 0.1) dt = 0.1;
+            physics(dt);
+            camera.position.copy(player.pos);
+            camera.rotation.z = -player.roll;
+            updateDummies(dt);
+            updateParticles(dt);
+            drawSlash();
+            renderer.render(scene, camera);
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  BOOT
+        // ════════════════════════════════════════════════════════
+        camTarget.copy(player.pos);
+        buildWorld();
+        initParticles();
+        spawnDummies();
+        bindInput();
+        initPanel();
+        loop();
+    </script>
 </body>
 </html>
