@@ -719,6 +719,19 @@ function terrainChanged(){
     respawnDummies();
 }
 
+// inverse of terrainChanged — drops any deployed heightfield and returns the
+// world to the flat default. DEPLOY with an empty forge lands here.
+function restoreDefaultTerrain(){
+    if (!TER.active) return;                     // already the default world
+    if (TER.mesh){ scene.remove(TER.mesh); TER.mesh.geometry.dispose(); TER.mesh.material.dispose(); TER.mesh = null; }
+    TER.active = false; TER.heights = null; TER.colors = null;
+    ground.position.y = 0;                       // flat plane is THE floor again
+    if (lastForestData) buildForestMeshes(lastForestData);   // re-seat forest, same layout
+    const py = floorY(player.pos.x, player.pos.z) + M.height;
+    if (player.pos.y < py){ player.pos.y = py; player.vel.set(0,0,0); }
+    respawnDummies();
+}
+
 function loadTerrainJSON(data){
     const meta = data.exportMeta, pts = data.vertexDataMatrix;
     if (!meta || !pts){ alert('Not a composer export (missing exportMeta / vertexDataMatrix)'); return; }
@@ -1618,9 +1631,10 @@ const GAMEMODES={
 const MODE_ORDER=['combat','sandbox','city','explorer'];
 const dummies=[];
 let killCount=0, slashCD=0;
-let _limbGeo=null, _headGeo=null;
-const _bodyMat=new THREE.MeshLambertMaterial({color:0x993230});
-const _headMat=new THREE.MeshLambertMaterial({color:0xA8453D});
+let _coneGeo=null, _headGeo=null;
+const _bodyMat=new THREE.MeshLambertMaterial({color:0xE3DDCB});   // bone shroud
+const _headMat=new THREE.MeshLambertMaterial({color:0xF0EBDD});   // paler skull
+const _eyeMat =new THREE.MeshLambertMaterial({color:0x151210});   // hollow pits
 const _toD=new THREE.Vector3(), _imp=new THREE.Vector3(), _bv=new THREE.Vector3(), _bp=new THREE.Vector3();
 const EL_KILLS=document.getElementById('h-kills');
 
@@ -1633,42 +1647,38 @@ function emitBlood(pos,vel){
     }
 }
 
-// humanoid build — legs/torso/arms share one unit cylinder, head shares one
-// unit sphere; only per-instance scale/position differ, so each dummy still
-// costs ~5 cheap draw calls instead of one big mesh (same trick the titan
-// rig already uses). Hit-test capsule (d.pos/d.r/d.half) is unchanged, so
-// grapple lock-on and slash reach both keep working exactly as before.
+// spook build — one shared unit cone (shroud) + one shared unit sphere
+// (head + eyes); only per-instance scale/position differ, so each dummy is
+// ~4 cheap draw calls (same trick the titan rig uses). Hit-test capsule
+// (d.pos/d.r/d.half) is unchanged, so grapple lock-on, slash reach and
+// body collision all keep working exactly as before.
 function spawnOne(){
     const h=C.dummyHeight*C.dummyScale, r=C.dummyRadius*C.dummyScale;
-    if(!_limbGeo)_limbGeo=new THREE.CylinderGeometry(1,1,1,8);
-    if(!_headGeo)_headGeo=new THREE.SphereGeometry(1,8,6);
+    if(!_coneGeo)_coneGeo=new THREE.ConeGeometry(1,1,10);
+    if(!_headGeo)_headGeo=new THREE.SphereGeometry(1,10,8);
 
     const group=new THREE.Group();
-    const legR=r*0.22, legH=h*0.38, legOff=r*0.30;
-    for(const sx of [-1,1]){
-        const leg=new THREE.Mesh(_limbGeo,_bodyMat);
-        leg.scale.set(legR,legH,legR);
-        leg.position.set(sx*legOff,-h/2+legH/2,0);
-        group.add(leg);
-    }
-    const torsoR=r*0.5, torsoH=h*0.36;
-    const torso=new THREE.Mesh(_limbGeo,_bodyMat);
-    torso.scale.set(torsoR,torsoH,torsoR);
-    torso.position.set(0,-h/2+legH+torsoH/2,0);
-    group.add(torso);
-    const armR=r*0.17, armH=h*0.32, armY=-h/2+legH+torsoH*0.7;
-    for(const sx of [-1,1]){
-        const arm=new THREE.Mesh(_limbGeo,_bodyMat);
-        arm.scale.set(armR,armH,armR);
-        arm.position.set(sx*(torsoR+armR*1.1),armY,0);
-        arm.rotation.z=sx*0.18;
-        group.add(arm);
-    }
-    const headR=r*0.36, headY=-h/2+legH+torsoH+headR*0.85;
+    // shroud: cone rising from the feet, apex tucked up into the head
+    const coneR=r*0.62, coneH=h*0.74;
+    const cone=new THREE.Mesh(_coneGeo,_bodyMat);
+    cone.scale.set(coneR,coneH,coneR);
+    cone.position.set(0,-h/2+coneH/2,0);
+    group.add(cone);
+    // head: the circle, resting on the cone tip
+    const headR=r*0.42, headY=-h/2+coneH+headR*0.55;
     const head=new THREE.Mesh(_headGeo,_headMat);
     head.scale.set(headR,headR,headR);
     head.position.set(0,headY,0);
     group.add(head);
+    // hollow eyes — two dark pits so it reads spooky, not snowman
+    const er=headR*0.22;
+    for(const sx of [-1,1]){
+        const eye=new THREE.Mesh(_headGeo,_eyeMat);
+        eye.scale.set(er,er*1.5,er*0.5);
+        eye.position.set(sx*headR*0.38,headY+headR*0.12,headR*0.95);
+        group.add(eye);
+    }
+    group.rotation.y=Math.random()*Math.PI*2;   // crowd stares in random directions
 
     let px,pz,base=null;
     // ~70% perched up high — tree crowns in forest modes, rooftops in city
@@ -3017,7 +3027,12 @@ document.getElementById('panel-toggle').addEventListener('click', () => {
 // ODM_FORGE's original bridge raycast a mesh every sample; we skip that
 // entirely and hand the composer's buffers straight to TER.
 function deployForgeTerrain(){
-    if(!forge.smooth){ showToast('. . . nothing compiled . . .'); return; }
+    if(!forge.smooth){                    // no images chosen → fall back to the default map
+        restoreDefaultTerrain();
+        setApp('play');
+        showToast('. . . no source imagery · default terrain . . .');
+        return;
+    }
     const d = forge.density, w = forge.width, h = forge.height;
     TER.d = d;
     TER.heights = new Float32Array(d*d);
