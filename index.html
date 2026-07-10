@@ -3,20 +3,34 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>ODM_CORE</title>
+<title>ODM_CORE // FORGE</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!--
   ═══════════════════════════════════════════════════════════════
   ODM_CORE — universal map engine on the locked ODM control base
   ═══════════════════════════════════════════════════════════════
+  APP screen:  forge | play        (setApp)   — which UI owns the renderer
+  MODE:        live  | replay      (setMode)  — in-game camera, unchanged
+  GAME_MODE:   combat | sandbox | city | explorer   (setGameMode)
+
+  [FORGE]  image → heightfield compiler + orbit preview (from ODM_FORGE)
+           DEPLOY writes straight into TER — no JSON round-trip.
+           Preview reads the game's ATMO, so the sky you tune is the sky
+           you fly in. EXPORT JSON/PNG still emit the interchange format.
   [CORE]   renderer, modes: live | replay
   [ODM]    dual-stick flight (Test_2 architecture, slider-tuned)
   [BODY]   capsule hitbox + TUMBLE crash state
   [COMBAT] titan dummies · swipe-to-slash · blood · ragdolls
+  [TITAN]  big slow walker · detachable parts · nape kill from behind
+  [CITY]   procedural building grid — rooftop dummy spawning (from V2)
+  [PROPS]  crates + balls, impulse exchange, grappleable (from V2)
+  [MECH]   pendulum wrecking ball + spinner + launch pads (from V2)
+  [TERRAIN] Float32Array heightfield + O(1) bilinear floorY. No raycasts.
   [REC]    continuous ring recorder + outside orbit replay
-  [ATMO]   live sky / fog / sun / forest tint — world-viewer deck
-  [TUNE]   generated slider deck (now docked BOTTOM), live mid-flight
+  [ATMO]   live sky / fog / sun / rain / mist — drives BOTH scenes
+  [TUNE]   generated slider deck (docked BOTTOM), live mid-flight
+  [PRESET] portable odm-project JSON — every namespace, one file
   Blocks are rip-out-able; COMBAT is the extension point.
   ═══════════════════════════════════════════════════════════════
 -->
@@ -140,6 +154,59 @@
 border-bottom:1px solid var(--accent); color:var(--hi); padding:5px 10px; font-size:0.45rem; letter-spacing:1px; border-radius:1px; animation:tIn 0.5s ease-out, tOut 1.2s ease-in 2.2s forwards; }
     @keyframes tIn { from{opacity:0;transform:translateY(-8px);} to{opacity:1;transform:translateY(0);} }
     @keyframes tOut { from{opacity:1;} to{opacity:0;} }
+
+/* ════════════ FORGE UI (from ODM_FORGE / Mapmilds) ════════════ */
+#forge-ui { position:fixed; inset:0; z-index:60; pointer-events:none;
+            display:none; flex-direction:column; justify-content:flex-end; }
+#forge-ui.on { display:flex; }
+/* belt and braces: nothing in the deck can intercept a touch while flying */
+#forge-ui:not(.on) { display:none !important; pointer-events:none !important; }
+#forge-ui .ui-block, #forge-ui .ui-block * { pointer-events:auto; touch-action:manipulation; }
+#forge-ui .btn { background:rgba(143,43,51,0.78); color:#fff; border:none; padding:8px 14px;
+       font-family:'Share Tech Mono',monospace; font-size:9px; font-weight:bold;
+       text-transform:uppercase; letter-spacing:1px; border-radius:2px; cursor:pointer; }
+#forge-ui .btn.ghost { background:rgba(255,255,255,0.12); color:#ddd; }
+#forge-ui .btn.active { background:var(--accent); box-shadow:0 0 10px rgba(143,43,51,0.6); }
+#forge-ui .btn.big { padding:12px 18px; font-size:11px; }
+#forge-ui .btn:disabled { opacity:0.4; }
+/* ════════════ FORGE UI ════════════ */
+
+  #forge-ui #forge-top {
+    position:absolute; top:12px; left:12px; right:12px;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    pointer-events:none;
+  }
+  #forge-ui #forge-title {
+    background:rgba(232,213,196,0.88); border-left:3px solid var(--accent);
+    padding:6px 10px; font-size:9px; font-weight:bold;
+    text-transform:uppercase; letter-spacing:1px; line-height:2; color:#1a1a1a;
+  }
+  #forge-ui #forge-title .sub { color:var(--accent); }
+
+  #forge-ui #panel {
+    max-height:46vh; overflow-y:auto; touch-action:pan-y;
+    background:rgba(5,5,8,0.94); border-top:2px solid var(--accent);
+    padding:12px 14px 20px; display:flex; flex-direction:column; gap:12px;
+    backdrop-filter:blur(4px);
+  }
+  #forge-ui #panel.collapsed { max-height:0; padding:0 14px; overflow:hidden; border-top-width:0; }
+  #forge-ui #panel-toggle {
+    align-self:center; margin-bottom:0;
+    border-radius:4px 4px 0 0;
+  }
+  #forge-ui .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  #forge-ui .lbl {
+    color:rgba(255,255,255,0.55); font-size:8px; font-weight:bold;
+    text-transform:uppercase; letter-spacing:1px; min-width:86px;
+  }
+  #forge-ui .val { color:var(--gold); font-size:9px; font-weight:bold; min-width:36px; text-align:right; }
+  #forge-ui input[type="range"] { flex:1; accent-color:var(--accent); height:26px; background:none; }
+  #forge-ui #statsText {
+    color:rgba(255,255,255,0.65); font-size:8px; letter-spacing:1px;
+    text-transform:uppercase; line-height:1.9; border-left:2px solid var(--accent);
+    padding-left:8px;
+  }
+
 </style>
 </head>
 <body>
@@ -156,6 +223,7 @@ border-bottom:1px solid var(--accent); color:var(--hi); padding:5px 10px; font-s
             <button class="icon-btn gold" id="btn-save">save</button>
             <button class="icon-btn gold" id="btn-load">load</button>
             <button class="icon-btn gold" id="btn-watch">watch</button>
+            <button class="icon-btn gold" id="btn-forge">forge</button>
             <button class="icon-btn gold" id="btn-terrain">u</button>
             <button class="icon-btn gold" id="btn-mode">mode</button>
             <button class="icon-btn gold" id="btn-dummies">dummies</button>
@@ -172,6 +240,54 @@ border-bottom:1px solid var(--accent); color:var(--hi); padding:5px 10px; font-s
     </div>
 </div>
 <div id="deck-pull"><span>UI</span></div>
+
+<div id="forge-ui">
+  <div id="forge-top">
+    <div id="forge-title">
+      <div>ODM_FORGE</div>
+      <div class="sub" id="forge-status">AWAITING SOURCE IMAGERY</div>
+    </div>
+    <div class="ui-block" style="display:flex; gap:8px;">
+      <button class="btn ghost big" id="forgeExitBtn">◀ FLY</button>
+      <button class="btn big" id="deployBtn">DEPLOY ▶</button>
+    </div>
+  </div>
+  <button class="btn ghost ui-block" id="panel-toggle">▼ CONSOLE</button>
+  <div id="panel" class="ui-block">
+    <div class="row">
+      <button class="btn" id="loadImagesBtn">[ LOAD IMAGES ]</button>
+      <input type="file" id="forge-files" accept="image/*" multiple style="display:none">
+      <button class="btn ghost" id="clearBtn">CLEAR</button>
+      <button class="btn ghost" id="exportJsonBtn">EXPORT JSON</button>
+      <button class="btn ghost" id="exportPngBtn">EXPORT PNG</button>
+    </div>
+    <div class="row"><span class="lbl">LAYOUT</span>
+      <button class="btn ghost active" id="modeGrid">GRID</button>
+      <button class="btn ghost" id="modeStack">STACK</button>
+      <button class="btn ghost" id="modeZStack">Z-STACK</button></div>
+    <div class="row"><span class="lbl">RENDER</span>
+      <button class="btn ghost active" data-mode="mesh">MESH</button>
+      <button class="btn ghost" data-mode="wireframe">WIRE</button>
+      <button class="btn ghost" data-mode="points">POINTS</button></div>
+    <div class="row"><span class="lbl">COLOR</span>
+      <button class="btn ghost active" data-color="image">IMAGE</button>
+      <button class="btn ghost" data-color="height">HEIGHT</button>
+      <button class="btn ghost" data-color="grayscale">GRAY</button></div>
+    <div class="row"><span class="lbl">GRID SIZE</span>
+      <input type="range" id="gridSize" min="50" max="500" step="10" value="200">
+      <span class="val" id="gridSizeVal">200</span></div>
+    <div class="row"><span class="lbl">Z-SCALE</span>
+      <input type="range" id="heightScale" min="0.1" max="8" step="0.1" value="2">
+      <span class="val" id="heightScaleVal">2.0</span></div>
+    <div class="row"><span class="lbl">BLUR</span>
+      <input type="range" id="blurScale" min="0" max="12" step="1" value="0">
+      <span class="val" id="blurVal">0</span></div>
+    <div class="row"><span class="lbl">DENSITY</span>
+      <input type="range" id="density" min="32" max="256" step="16" value="128">
+      <span class="val" id="densityVal">128</span></div>
+    <div id="statsText">// Memory buffers idle. Load imagery to compile terrain.</div>
+  </div>
+</div>
 
 <div id="tumble-fx"></div>
 <div id="toast-container"></div>
@@ -231,7 +347,7 @@ const M = {
     rollMax:      0.22,
 
     // playground
-    bounce:       1.5,
+    bounce:       0.45,   // restitution 0..1 — >1 makes props gain energy
     propFric:     2.2,
     massScale:    1,
     tumbleThresh: 1120,
@@ -270,7 +386,7 @@ const MOVE_SLIDERS = [
 // ╔══════════════════════════════════════════════════════════╗
 // ║ [JOY] joystick layout — size & placement, live sliders    ║
 // ╚══════════════════════════════════════════════════════════╝
-const JOY={size:60, side:60, bottom:40};
+const JOY={size:80, side:50, bottom:30};
 function setJoyLayout(){
     const joyL=document.getElementById('joyL'),joyR=document.getElementById('joyR');
     const knobL=document.getElementById('knobL'),knobR=document.getElementById('knobR');
@@ -281,9 +397,9 @@ function setJoyLayout(){
     }
     joyL.style.left=JOY.side+'px';
     joyR.style.right=JOY.side+'px';
-    const knob=JOY.size*.25;                         // keeps the 42/92 ratio
+    const knob=JOY.size*.45;                         // keeps the 42/92 ratio
     for(const k of [knobL,knobR]){k.style.width=knob+'px';k.style.height=knob+'px';}
-    M.stickRadius=Math.round(JOY.size*1.2);           // input travel scales with pad
+    M.stickRadius=Math.round(JOY.size*1.6);           // input travel scales with pad
 }
 const CAM_SLIDERS = [
     { lbl:'joy size',     min:64,   max:170, step:2,    get:()=>JOY.size,        set:v=>{JOY.size=v;setJoyLayout();} },
@@ -324,6 +440,9 @@ const COMBAT_SLIDERS = [
     { lbl:'tumble threshold',min:50,  max:1200,step:10,   get:()=>M.tumbleThresh,  set:v=>M.tumbleThresh=v },
     { lbl:'tumble time',     min:0.2, max:3,   step:0.1,  get:()=>M.tumbleTime,    set:v=>M.tumbleTime=v },
     { lbl:'tumble spin',     min:0,   max:20,  step:0.5,  get:()=>M.tumbleSpin,    set:v=>M.tumbleSpin=v },
+    { lbl:'prop bounce',     min:0,   max:1,   step:0.05, get:()=>M.bounce,    set:v=>M.bounce=v },
+    { lbl:'prop friction',   min:0,   max:10,  step:0.2,  get:()=>M.propFric,  set:v=>M.propFric=v },
+    { lbl:'prop weight',     min:0.2, max:5,   step:0.1,  get:()=>M.massScale, set:v=>M.massScale=v },
     { lbl:'replay seconds',  min:5,   max:45,  step:1,    get:()=>M.recordSecs,    set:v=>M.recordSecs=v },
 ];
 
@@ -347,7 +466,9 @@ function buildSliderColumn(containerId, defs){
 // ║ [CORE] renderer + modes                                   ║
 // ╚══════════════════════════════════════════════════════════╝
 let simTime=0;
-let MODE='live';   // 'live' | 'replay'
+let clockSwallow=false;   // hoisted: setApp() flips it before the loop exists
+let MODE='live';   // in-game camera mode: 'live' | 'replay'
+let APP ='forge';  // app-level screen:    'forge' | 'play'   (NOT the same axis as MODE)
 const JOY_TOUCH_RADIUS = 0;
 const cc=document.getElementById('canvas-container');
 const scene=new THREE.Scene();
@@ -389,14 +510,16 @@ const ATMO={
     fogNear:2000, fogFar:13000,
     sunInt:1.0, ambInt:1.1, sunEl:54, sunAz:56,
     canopyHue:0, canopySat:1, forestBright:1, groundBright:1,
+    weatherRain:0, weatherMist:0.1,     // forge preview weather; also flies in-game
 };
 const _skyCol=new THREE.Color();
 function applySky(){
     _skyCol.setHSL(ATMO.skyH/360, ATMO.skyS, ATMO.skyL);
     scene.background.copy(_skyCol);
     scene.fog.color.copy(_skyCol);
-    scene.fog.near=ATMO.fogNear;
-    scene.fog.far=ATMO.fogFar;
+    // mist pulls the fog wall in — same curve the forge preview uses
+    scene.fog.near=ATMO.fogNear*(1 - ATMO.weatherMist*0.45);
+    scene.fog.far =ATMO.fogFar *(1 - ATMO.weatherMist*0.55);
 }
 function applySun(){
     sun.intensity=ATMO.sunInt;
@@ -427,6 +550,8 @@ const ATMO_SLIDERS = [
     { lbl:'canopy sat',     min:0,    max:2,    step:0.05, get:()=>ATMO.canopySat,    set:v=>{ATMO.canopySat=v;forestTintDirty=true;} },
     { lbl:'forest bright',  min:0.3,  max:2,    step:0.05, get:()=>ATMO.forestBright, set:v=>{ATMO.forestBright=v;forestTintDirty=true;} },
     { lbl:'ground bright',  min:0.3,  max:2,    step:0.05, get:()=>ATMO.groundBright, set:v=>{ATMO.groundBright=v;ground.material.color.copy(GROUND_BASE).multiplyScalar(v);} },
+    { lbl:'rain',           min:0,    max:1,    step:0.05, get:()=>ATMO.weatherRain,  set:v=>{ATMO.weatherRain=v;applyAtmosphere();} },
+    { lbl:'mist',           min:0,    max:1,    step:0.05, get:()=>ATMO.weatherMist,  set:v=>{ATMO.weatherMist=v;applySky();applyAtmosphere();} },
 ];
 
 // ╔══════════════════════════════════════════════════════════╗
@@ -907,6 +1032,252 @@ function regenForest(){
 regenForest();
 
 
+// ── shim: city/sandbox need to strip the forest without regenerating it ──
+function clearForestMeshes(){
+    for (const m of forestMeshes){ scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
+    forestMeshes = [];
+    for (let i = statics.length-1; i >= 0; i--) if (statics[i].tree) statics.splice(i,1);
+}
+
+// ╔══════════════════════════════════════════════════════════╗
+// ║ [CITY] procedural building grid                           ║
+// ║ Cell-grid layout with street corridors. Buildings         ║
+// ║ register as statics (tagged .building) — grappleable,     ║
+// ║ collidable, visible from the same AABB system used by     ║
+// ║ the forest. Dummies spawn on rooftops in city mode.       ║
+// ╚══════════════════════════════════════════════════════════╝
+const CITY = {
+    cellSize:   1600,
+    streetW:    340,
+    minBuildW:  80,  maxBuildW: 280,
+    minH:       80,  maxH:      1400,
+    density:    0.68,
+    // concrete, steel, rust, glass-gray, slate
+    colors: [0x7A7D80, 0x70737A, 0x828582, 0x5E6268, 0x8A8882, 0x4C5158, 0x7E6A5A, 0x5A6870],
+};
+const cityMeshes=[];
+
+function clearCity(){
+    for(const m of cityMeshes){scene.remove(m);m.geometry.dispose();m.material.dispose();}
+    cityMeshes.length=0;
+    for(let i=statics.length-1;i>=0;i--)if(statics[i].building)statics.splice(i,1);
+}
+
+function buildCity(){
+    clearCity(); clearForestMeshes();   // defined in [FOREST] shim below
+    const half=WORLD.half, size=WORLD.size;
+    const cellsPerSide=Math.ceil(size/CITY.cellSize);
+    const usable=CITY.cellSize-CITY.streetW;
+    for(let cx=0;cx<cellsPerSide;cx++){
+        for(let cz=0;cz<cellsPerSide;cz++){
+            if(Math.random()>CITY.density)continue;
+            const cx0=-half+cx*CITY.cellSize;
+            const cz0=-half+cz*CITY.cellSize;
+            const count=1+Math.floor(Math.random()*3);
+            for(let b=0;b<count;b++){
+                const bw=CITY.minBuildW+Math.random()*(CITY.maxBuildW-CITY.minBuildW);
+                const bd=CITY.minBuildW+Math.random()*(CITY.maxBuildW-CITY.minBuildW);
+                // bias toward mid-height with occasional towers
+                const roll=Math.random();
+                const bh=roll<0.6
+                    ? CITY.minH+Math.random()*(400-CITY.minH)
+                    : roll<0.85
+                    ? 400+Math.random()*500
+                    : 900+Math.random()*(CITY.maxH-900);
+                const maxOffX=Math.max(0,usable-bw);
+                const maxOffZ=Math.max(0,usable-bd);
+                const bx=cx0+CITY.streetW/2+Math.random()*maxOffX;
+                const bz=cz0+CITY.streetW/2+Math.random()*maxOffZ;
+                const mx=bx+bw/2, mz=bz+bd/2;
+                const color=CITY.colors[Math.floor(Math.random()*CITY.colors.length)];
+                const geo=new THREE.BoxGeometry(bw,bh,bd);
+                const mat=new THREE.MeshLambertMaterial({color});
+                const mesh=new THREE.Mesh(geo,mat);
+                const by=floorY(mx,mz);                       // sit buildings ON the heightfield
+                mesh.position.set(mx,by+bh/2,mz);
+                scene.add(mesh); cityMeshes.push(mesh);
+                statics.push({x:mx,z:mz,hw:bw/2,hd:bd/2,baseY:by,topY:by+bh,mesh,building:true});
+            }
+        }
+    }
+}
+
+// ╔══════════════════════════════════════════════════════════╗
+// ║ [PROPS] dynamic bodies — sandbox mode (from playgrr)      ║
+// ║ Sphere-collider broadphase, impulse exchange with player  ║
+// ║ and each other. Props are grappleable via ray-sphere in   ║
+// ║ scanHit when GAME_MODE === 'sandbox'.                     ║
+// ╚══════════════════════════════════════════════════════════╝
+const props=[];
+
+function _addProp(x,y,z,size,isBall){
+    const g=floorY(x,z);                       // terrain-aware rest height
+    if(isBall){
+        const r=size;
+        const mesh=new THREE.Mesh(new THREE.SphereGeometry(r,14,10),new THREE.MeshLambertMaterial({color:0x8B4040}));
+        mesh.position.set(x,g+y,z); scene.add(mesh);
+        props.push({mesh,shape:'ball',pos:new THREE.Vector3(x,g+y,z),vel:new THREE.Vector3(),rotV:new THREE.Vector3(),r,rest:g+r,mass:(r/25)**3});
+    }else{
+        const mesh=new THREE.Mesh(new THREE.BoxGeometry(size,size,size),new THREE.MeshLambertMaterial({color:0x8B6F47}));
+        mesh.position.set(x,g+y,z); scene.add(mesh);
+        props.push({mesh,shape:'crate',pos:new THREE.Vector3(x,g+y,z),vel:new THREE.Vector3(),rotV:new THREE.Vector3(),r:size*0.62,rest:g+size/2,mass:(size/40)**3});
+    }
+}
+
+function clearProps(){
+    for(const p of props){scene.remove(p.mesh);p.mesh.geometry.dispose();p.mesh.material.dispose();}
+    props.length=0;
+}
+
+function spawnDefaultProps(){
+    clearProps();
+    _addProp(-300,25,-500,50,false); _addProp(-300,80,-500,50,false); _addProp(-300,135,-500,50,false);
+    _addProp(-240,25,-500,50,false); _addProp(-240,80,-500,50,false);
+    _addProp(600,30,700,60,false);   _addProp(600,95,700,60,false);
+    _addProp(660,30,760,60,false);   _addProp(-1000,35,1200,70,false); _addProp(1500,25,-1300,50,false);
+    _addProp(150,30,300,30,true);    _addProp(220,25,340,25,true);
+    _addProp(90,40,380,40,true);     _addProp(-500,20,900,20,true);
+    _addProp(1900,35,400,35,true);   _addProp(-1600,28,-800,28,true);
+}
+
+function updateProps(dt){
+    for(const pr of props){
+        pr.vel.y+=M.gravity*dt;
+        const f=Math.exp(-M.propFric*0.35*dt);
+        pr.vel.x*=f; pr.vel.z*=f;
+        pr.pos.addScaledVector(pr.vel,dt);
+        pr.rest = floorY(pr.pos.x,pr.pos.z) + (pr.shape==='ball'?pr.r:pr.r/0.62/2);
+        if(pr.pos.y<pr.rest){
+            pr.pos.y=pr.rest;
+            if(pr.vel.y<0)pr.vel.y=-pr.vel.y*M.bounce;
+            if(Math.abs(pr.vel.y)<8)pr.vel.y=0;
+            const gf=Math.exp(-M.propFric*dt); pr.vel.x*=gf; pr.vel.z*=gf;
+        }
+        for(const s of statics){
+            if(pr.pos.y-pr.r>s.topY||pr.pos.y+pr.r<s.baseY)continue;
+            const dx=pr.pos.x-s.x,dz=pr.pos.z-s.z,hw=s.hw+pr.r,hd=s.hd+pr.r;
+            if(Math.abs(dx)>hw||Math.abs(dz)>hd)continue;
+            const ox=hw-Math.abs(dx),oz=hd-Math.abs(dz);
+            if(ox<oz){pr.pos.x+=dx<0?-ox:ox;pr.vel.x=-pr.vel.x*M.bounce;}
+            else{pr.pos.z+=dz<0?-oz:oz;pr.vel.z=-pr.vel.z*M.bounce;}
+        }
+        if(Math.abs(pr.pos.x)>WORLD.half-pr.r){pr.pos.x=Math.sign(pr.pos.x)*(WORLD.half-pr.r);pr.vel.x*=-M.bounce;}
+        if(Math.abs(pr.pos.z)>WORLD.half-pr.r){pr.pos.z=Math.sign(pr.pos.z)*(WORLD.half-pr.r);pr.vel.z*=-M.bounce;}
+        const sp=pr.vel.length();
+        if(pr.shape==='crate'){
+            if(sp>4){pr.rotV.x=pr.vel.z*0.004;pr.rotV.z=-pr.vel.x*0.004;}else pr.rotV.multiplyScalar(0.9);
+            pr.mesh.rotation.x+=pr.rotV.x; pr.mesh.rotation.z+=pr.rotV.z;
+        }else{pr.mesh.rotation.x+=pr.vel.z*dt/pr.r; pr.mesh.rotation.z-=pr.vel.x*dt/pr.r;}
+        pr.mesh.position.copy(pr.pos);
+    }
+    // prop ↔ prop sphere collisions
+    for(let i=0;i<props.length;i++) for(let j=i+1;j<props.length;j++){
+        const a=props[i],b=props[j],dist=a.pos.distanceTo(b.pos),minD=a.r+b.r;
+        if(dist<minD&&dist>0.001){
+            const n=new THREE.Vector3().subVectors(b.pos,a.pos).divideScalar(dist),ov=(minD-dist)/2;
+            a.pos.addScaledVector(n,-ov); b.pos.addScaledVector(n,ov);
+            const rel=new THREE.Vector3().subVectors(a.vel,b.vel).dot(n);
+            if(rel>0){const ma=a.mass*M.massScale,mb=b.mass*M.massScale,imp=rel*(1+M.bounce)/(1/ma+1/mb);a.vel.addScaledVector(n,-imp/ma);b.vel.addScaledVector(n,imp/mb);}
+        }
+    }
+    // player ↔ prop impulse exchange
+    const pR=M.radius+4;
+    for(const pr of props){
+        const dist=player.pos.distanceTo(pr.pos),minD=pR+pr.r;
+        if(dist<minD&&dist>0.001){
+            const n=new THREE.Vector3().subVectors(pr.pos,player.pos).divideScalar(dist),ov=minD-dist;
+            pr.pos.addScaledVector(n,ov*0.7); player.pos.addScaledVector(n,-ov*0.3);
+            const rel=new THREE.Vector3().subVectors(player.vel,pr.vel).dot(n);
+            if(rel>0){const m=pr.mass*M.massScale;pr.vel.addScaledVector(n,rel*1.4/Math.max(0.4,m));player.vel.addScaledVector(n,-rel*0.35*Math.min(1.6,m));if(rel*Math.min(2,m)>M.tumbleThresh)startTumble(rel*m,n.clone().negate());}
+        }
+    }
+    // kinematic mechanisms ↔ player & props
+    for(const k of kinSpheres){
+        const kv=new THREE.Vector3().subVectors(k.pos,k.prev).multiplyScalar(60);
+        const dP=player.pos.distanceTo(k.pos),minP=k.r+M.radius;
+        if(dP<minP&&dP>0.001){const n=new THREE.Vector3().subVectors(player.pos,k.pos).divideScalar(dP);player.pos.copy(k.pos).addScaledVector(n,minP);const smack=kv.length();player.vel.copy(kv.clone().multiplyScalar(1.3)).addScaledVector(n,Math.max(120,smack*0.5));if(smack>M.tumbleThresh*0.5)startTumble(smack*1.4,n);}
+        for(const pr of props){const d=pr.pos.distanceTo(k.pos),minD=k.r+pr.r;if(d<minD&&d>0.001){const n=new THREE.Vector3().subVectors(pr.pos,k.pos).divideScalar(d);pr.pos.copy(k.pos).addScaledVector(n,minD);pr.vel.copy(kv.clone().multiplyScalar(1.2/Math.max(0.5,pr.mass*M.massScale))).addScaledVector(n,80);}}
+    }
+    // launch pads
+    for(const pad of launchPads){
+        const dx=player.pos.x-pad.x,dz=player.pos.z-pad.z;
+        if(dx*dx+dz*dz<pad.r*pad.r&&player.pos.y<pad.y+M.height+30&&player.vel.y<=10){
+            player.vel.y=650;
+            for(let i=0;i<24&&particles.length<M.smokeMax;i++)emit(new THREE.Vector3(pad.x+(Math.random()-0.5)*pad.r,pad.y+6,pad.z+(Math.random()-0.5)*pad.r),new THREE.Vector3(0,120,0),0.7);
+        }
+        for(const pr of props){const px=pr.pos.x-pad.x,pz=pr.pos.z-pad.z;if(px*px+pz*pz<pad.r*pad.r&&pr.pos.y<pr.rest+20&&pr.vel.y<=5)pr.vel.y=420/Math.max(0.5,pr.mass*M.massScale);}
+    }
+}
+
+// ╔══════════════════════════════════════════════════════════╗
+// ║ [MECH] kinematic mechanisms — sandbox mode (from playgrr) ║
+// ║ Pendulum wrecking ball + spinning arm + launch pads.      ║
+// ║ kinSpheres[] is rebuilt per frame and fed to updateProps. ║
+// ╚══════════════════════════════════════════════════════════╝
+let kinSpheres=[];
+let pendState=null, spinState=null, launchPads=[];
+const pendMeshArr=[], spinMeshArr=[];
+
+function clearMechs(){
+    for(const m of pendMeshArr){scene.remove(m);m.geometry.dispose();m.material.dispose();}
+    for(const m of spinMeshArr){scene.remove(m);m.geometry.dispose();m.material.dispose();}
+    for(const p of launchPads){scene.remove(p.mesh);p.mesh.geometry.dispose();p.mesh.material.dispose();}
+    pendMeshArr.length=0; spinMeshArr.length=0; launchPads.length=0;
+    kinSpheres.length=0; pendState=null; spinState=null;
+}
+
+function spawnDefaultMechs(){
+    clearMechs();
+    // pendulum wrecking ball
+    pendState={pivot:new THREE.Vector3(1200,floorY(1200,-1200)+760,-1200),len:520,ballR:70,amp:1.05,w:0.9};
+    const pendArm=new THREE.Mesh(new THREE.CylinderGeometry(6,6,pendState.len,6),new THREE.MeshLambertMaterial({color:0x55504A}));
+    const pendBall=new THREE.Mesh(new THREE.SphereGeometry(pendState.ballR,14,10),new THREE.MeshLambertMaterial({color:0x2E2A28}));
+    scene.add(pendArm); scene.add(pendBall);
+    pendMeshArr.push(pendArm,pendBall); pendState.armMesh=pendArm; pendState.ballMesh=pendBall;
+    // spinner arm
+    spinState={hub:new THREE.Vector3(-1500,floorY(-1500,900)+70,900),len:520,r:36,w:0.85};
+    const spinHub=new THREE.Mesh(new THREE.CylinderGeometry(30,40,140,8),new THREE.MeshLambertMaterial({color:0x6A6660}));
+    spinHub.position.copy(spinState.hub);
+    const spinArm=new THREE.Mesh(new THREE.BoxGeometry(spinState.len*2,26,26),new THREE.MeshLambertMaterial({color:0x8A0303}));
+    spinArm.position.copy(spinState.hub);
+    scene.add(spinHub); scene.add(spinArm);
+    spinMeshArr.push(spinHub,spinArm); spinState.armMesh=spinArm;
+    // launch pads
+    const padDefs=[{x:0,z:1800,r:100},{x:-2200,z:-400,r:100}];
+    for(const p of padDefs){
+        const mesh=new THREE.Mesh(new THREE.CylinderGeometry(p.r,p.r,8,20),new THREE.MeshLambertMaterial({color:0x0DD824,emissive:0x063,transparent:true,opacity:0.85}));
+        const py=floorY(p.x,p.z);
+        mesh.position.set(p.x,py+4,p.z); scene.add(mesh);
+        launchPads.push({x:p.x,z:p.z,r:p.r,y:py,mesh});
+    }
+}
+
+function updateMechanisms(t){
+    if(!pendState&&!spinState){kinSpheres.length=0;return;}
+    kinSpheres.length=0;
+    if(pendState){
+        const a=pendState.amp*Math.sin(t*pendState.w);
+        const dir=new THREE.Vector3(Math.sin(a),-Math.cos(a),0);
+        const ballPos=pendState.pivot.clone().addScaledVector(dir,pendState.len);
+        const prevA=pendState.amp*Math.sin((t-1/60)*pendState.w);
+        const prevPos=pendState.pivot.clone().addScaledVector(new THREE.Vector3(Math.sin(prevA),-Math.cos(prevA),0),pendState.len);
+        pendState.ballMesh.position.copy(ballPos);
+        pendState.armMesh.position.copy(pendState.pivot.clone().addScaledVector(dir,pendState.len/2));
+        pendState.armMesh.rotation.z=-a;
+        kinSpheres.push({pos:ballPos,prev:prevPos,r:pendState.ballR});
+        for(let i=1;i<=3;i++){const f=i/4;kinSpheres.push({pos:pendState.pivot.clone().addScaledVector(dir,pendState.len*f),prev:pendState.pivot.clone().addScaledVector(new THREE.Vector3(Math.sin(prevA),-Math.cos(prevA),0),pendState.len*f),r:16});}
+    }
+    if(spinState){
+        const ang=t*spinState.w,pAng=(t-1/60)*spinState.w;
+        spinState.armMesh.rotation.y=ang;
+        for(let i=-4;i<=4;i++){
+            if(i===0)continue;
+            const f=i/4*spinState.len;
+            kinSpheres.push({pos:new THREE.Vector3(spinState.hub.x+Math.cos(ang)*f,spinState.hub.y,spinState.hub.z-Math.sin(ang)*f),prev:new THREE.Vector3(spinState.hub.x+Math.cos(pAng)*f,spinState.hub.y,spinState.hub.z-Math.sin(pAng)*f),r:spinState.r});
+        }
+    }
+}
+
 // ╔══════════════════════════════════════════════════════════╗
 // ║ [BODY] player + TUMBLE state                              ║
 // ╚══════════════════════════════════════════════════════════╝
@@ -919,7 +1290,9 @@ const player={
     tumbleVel:new THREE.Vector3(),   // angular spin during tumble (pitch,yaw,roll rad/s)
 };
 const camTarget=new THREE.Vector3();
-const grapple={active:false,anchor:new THREE.Vector3(),line:null};
+const grapple={active:false,anchor:new THREE.Vector3(),line:null,
+               tT:null,tP:null,tD:null,tPR:null,   // titan / part / dummy / prop under the hook
+               ox:0,oy:0,oz:0};
 const stickL={on:false,id:null,cx:0,cy:0,dx:0,dy:0};
 const stickR={on:false,id:null,cx:0,cy:0,dx:0,dy:0,momX:0,momY:0};
 const aimRay=new THREE.Raycaster();
@@ -998,7 +1371,7 @@ function _rayAABB(o, d, s, maxT){
     }
     return tmin;
 }
-let _scanT=null,_scanP=null,_scanD=null;  // titan/part/dummy under the crosshair
+let _scanT=null,_scanP=null,_scanD=null,_scanPR=null;  // titan/part/dummy/prop under the crosshair
 const _ocV=new THREE.Vector3();
 const _dumBox={x:0,z:0,hw:0,hd:0,baseY:0,topY:0};
 const _capA=new THREE.Vector3(), _capB=new THREE.Vector3(), _capBA=new THREE.Vector3(), _capOA=new THREE.Vector3();
@@ -1035,7 +1408,7 @@ function scanHit(){
     aimRay.setFromCamera(cNDC,camera);
     const o = aimRay.ray.origin, d = aimRay.ray.direction;
     let bestT = M.maxRopeDist, hitPt = null;
-    _scanT=null;_scanP=null;_scanD=null;
+    _scanT=null;_scanP=null;_scanD=null;_scanPR=null;
 
     // ground (flat plane, or heightfield march when terrain is loaded)
     {
@@ -1045,7 +1418,7 @@ function scanHit(){
     // static AABBs (walls + every tree trunk)
     for (const st of statics){
         const t = _rayAABB(o, d, st, bestT);
-        if (t >= 0 && t < bestT){ bestT = t; hitPt = _hitV.copy(o).addScaledVector(d, t); _scanT=null;_scanP=null;_scanD=null; }
+        if (t >= 0 && t < bestT){ bestT = t; hitPt = _hitV.copy(o).addScaledVector(d, t); _scanT=null;_scanP=null;_scanD=null;_scanPR=null; }
     }
     // dummies (ray-capsule feet→head) — hooks track the real silhouette,
     // no more locking onto empty air past a body's edge
@@ -1056,7 +1429,7 @@ function scanHit(){
         const t=_rayCapsule(o,d,_capA,_capB,dm.r,bestT);
         if (t>=0 && t<bestT){
             bestT=t; hitPt=_hitV.copy(o).addScaledVector(d,t);
-            _scanT=null;_scanP=null;_scanD=dm;
+            _scanT=null;_scanP=null;_scanD=dm;_scanPR=null;
         }
     }
     // titan parts (ray-sphere) — hooks land on walking flesh
@@ -1080,7 +1453,7 @@ function scanHit(){
             const tHit=-b-Math.sqrt(disc);
             if (tHit>=0 && tHit<bestT){
                 bestT=tHit; hitPt=_hitV.copy(o).addScaledVector(d,tHit);
-                _scanT=t; _scanP=p; _scanD=null;
+                _scanT=t; _scanP=p; _scanD=null; _scanPR=null;
             }
         }
     }
@@ -1093,11 +1466,29 @@ function fireGrapple(){
     const pt=scanHit(); if(!pt)return;
     releaseGrapple();
     grapple.active=true; grapple.anchor.copy(pt);
-    grapple.tT=_scanT; grapple.tP=_scanP; grapple.tD=_scanD;
+    // dynamic props (sandbox only) — ray-sphere, hooks track crates and balls
+    if(GAME_MODE==='sandbox'){
+        for(const pr of props){
+            _ocV.subVectors(o,pr.pos);
+            const bq=_ocV.dot(d), cq=_ocV.lengthSq()-pr.r*pr.r, disc=bq*bq-cq;
+            if(disc<0) continue;
+            const t=-bq-Math.sqrt(disc);
+            if(t>0 && t<bestT){
+                bestT=t; hitPt=_hitV.copy(o).addScaledVector(d,t);
+                _scanT=null;_scanP=null;_scanD=null;_scanPR=pr;
+            }
+        }
+    }
+    grapple.tT=_scanT; grapple.tP=_scanP; grapple.tD=_scanD; grapple.tPR=_scanPR;
     if(grapple.tD){
         grapple.ox=pt.x-grapple.tD.pos.x;
         grapple.oy=pt.y-grapple.tD.pos.y;
         grapple.oz=pt.z-grapple.tD.pos.z;
+    }
+    if(grapple.tPR){
+        grapple.ox=pt.x-grapple.tPR.pos.x;
+        grapple.oy=pt.y-grapple.tPR.pos.y;
+        grapple.oz=pt.z-grapple.tPR.pos.z;
     }
     if(grapple.tT){
         partWorld(grapple.tT,grapple.tP,_pw);
@@ -1113,7 +1504,7 @@ function fireGrapple(){
 }
 function releaseGrapple(){
     grapple.active=false;
-    grapple.tT=null; grapple.tP=null; grapple.tD=null;
+    grapple.tT=null; grapple.tP=null; grapple.tD=null; grapple.tPR=null;
     if(grapple.line){scene.remove(grapple.line);grapple.line.geometry.dispose();grapple.line.material.dispose();grapple.line=null;}
 }
 function updateRope(){
@@ -1219,11 +1610,12 @@ const C={
 // non-combat modes run the same movement/world with combat actors stripped.
 let GAME_MODE='combat';
 const GAMEMODES={
-  combat:  {name:'combat',   hud:'odm_combat'},
-  explorer:{name:'explorer', hud:'odm_explorer'},
-  sandbox: {name:'sandbox (props soon)', hud:'odm_sandbox'},
+  combat:   {name:'combat',   lbl:'⚔ combat',   hud:'odm_combat',   skyH:147, skyS:0.33, skyL:0.84},
+  sandbox:  {name:'sandbox',  lbl:'⬡ sandbox',  hud:'odm_sandbox',  skyH:30,  skyS:0.10, skyL:0.80},
+  city:     {name:'city',     lbl:'▦ city',     hud:'odm_city',     skyH:40,  skyS:0.08, skyL:0.70},
+  explorer: {name:'explorer', lbl:'◎ explorer', hud:'odm_explorer', skyH:205, skyS:0.35, skyL:0.83},
 };
-const MODE_ORDER=['combat','explorer','sandbox'];
+const MODE_ORDER=['combat','sandbox','city','explorer'];
 const dummies=[];
 let killCount=0, slashCD=0;
 let _limbGeo=null, _headGeo=null;
@@ -1279,13 +1671,14 @@ function spawnOne(){
     group.add(head);
 
     let px,pz,base=null;
-    // ~70% perched on trees, rest on the forest floor
+    // ~70% perched up high — tree crowns in forest modes, rooftops in city
     if(Math.random()<0.7){
-        const treeTops=[];
-        for(const st of statics)if(st.tree)treeTops.push(st);
-        if(treeTops.length){
-            const st=treeTops[Math.floor(Math.random()*treeTops.length)];
-            px=st.x+(Math.random()-0.5)*30; pz=st.z+(Math.random()-0.5)*30;
+        const perches=[];
+        for(const st of statics) if(st.tree||st.building) perches.push(st);
+        if(perches.length){
+            const st=perches[Math.floor(Math.random()*perches.length)];
+            const spread = st.building ? Math.min(st.hw,st.hd)*1.2 : 30;
+            px=st.x+(Math.random()-0.5)*spread; pz=st.z+(Math.random()-0.5)*spread;
             base=st.topY;
         }
     }
@@ -1303,7 +1696,7 @@ function spawnDummies(){ for(let i=0;i<C.dummyCount;i++)spawnOne(); }
 function respawnDummies(){
     for(const d of dummies)scene.remove(d.mesh);
     dummies.length=0;
-    if(GAME_MODE==='combat')spawnDummies();
+    if(GAME_MODE!=='explorer')spawnDummies();   // explorer = pure traversal
 }
 
 function killPuff(){
@@ -1689,6 +2082,15 @@ function physics(dt){
                                grapple.tD.pos.z+grapple.oz);
         }
     }
+    if(grapple.active&&grapple.tPR){
+        if(props.indexOf(grapple.tPR)<0){
+            releaseGrapple();
+        } else {
+            grapple.anchor.set(grapple.tPR.pos.x+grapple.ox,
+                               grapple.tPR.pos.y+grapple.oy,
+                               grapple.tPR.pos.z+grapple.oz);
+        }
+    }
     if(grapple.active&&grapple.tP){
         if(grapple.tP.hp<0||titans.indexOf(grapple.tT)<0){
             releaseGrapple();
@@ -2002,6 +2404,7 @@ const joyL=document.getElementById('joyL'),joyR=document.getElementById('joyR');
 const knobL=document.getElementById('knobL'),knobR=document.getElementById('knobR');
 
 document.addEventListener('touchstart',e=>{
+    if(APP==='forge')return;   // forge owns the screen; fOrbit handles its touches
     if(e.target.closest('#ui-deck')||e.target.closest('#replay-bar')||e.target.closest('#deck-pull'))return;
     e.preventDefault();
     if(MODE==='replay'){
@@ -2033,6 +2436,7 @@ document.addEventListener('touchstart',e=>{
 },{passive:false});
 
 document.addEventListener('touchmove',e=>{
+    if(APP==='forge')return;
     if(e.target.closest('#ui-deck')||e.target.closest('#replay-bar')||e.target.closest('#deck-pull'))return;
     e.preventDefault();
     if(MODE==='replay'){
@@ -2076,6 +2480,7 @@ document.addEventListener('touchmove',e=>{
 },{passive:false});
 
 function endTouches(e){
+    if(APP==='forge')return;
     if(MODE==='replay'){
         for(const t of e.changedTouches)delete orbit.touches[t.identifier];
         orbit.pinchDist=0;orbit.panMid=null;return;
@@ -2127,13 +2532,532 @@ document.getElementById('deck-pull').addEventListener('click',()=>{
     setTimeout(()=>window.dispatchEvent(new Event('resize')),260);
 });
 function _refit(){
-    renderer.setSize(cc.clientWidth,cc.clientHeight);
+    const w=cc.clientWidth||innerWidth, h=cc.clientHeight||innerHeight;
+    renderer.setSize(w,h);
+    if(APP==='forge'){
+        forgeCam.aspect=w/Math.max(1,h); forgeCam.updateProjectionMatrix();
+        return;
+    }
     if(MODE==='live')setHFov(currentHFov);
-    else{camera.aspect=cc.clientWidth/Math.max(1,cc.clientHeight);camera.updateProjectionMatrix();}
+    else{camera.aspect=w/Math.max(1,h);camera.updateProjectionMatrix();}
     sizeSlashCanvas();
 }
 window.addEventListener('resize',_refit);
 window.addEventListener('orientationchange',()=>{_refit();setTimeout(_refit,300);});
+
+
+// ╔══════════════════════════════════════════════════════════╗
+// ║ [FORGE] image → heightfield compiler (from ODM_FORGE)     ║
+// ║ Own scene + fOrbit cam, SHARED renderer. Reads the game's  ║
+// ║ ATMO so the preview sky is the sky you fly in.            ║
+// ║ DEPLOY writes straight into TER — no JSON round-trip.     ║
+// ╚══════════════════════════════════════════════════════════╝
+const forge = {
+  width: 1024, height: 1024,
+  heights: null, smooth: null, colors: null,
+  currentMesh: null,
+  mode: 'mesh',          // mesh | wireframe | points
+  colorMode: 'image',    // image | height | grayscale
+  stackMode: 'grid',     // grid | stack | zstack
+  gridSize: 200, scale: 2.0, blur: 0, density: 128,
+  cachedImages: [],
+  previewMode: 'full',   // full | split
+  splitRatio: 0.5,       // left pane width when split
+};
+
+const forgeScene = new THREE.Scene();
+const forgeCam = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 5000);
+const forgeSun = new THREE.DirectionalLight(0xffffff, 1.2);
+forgeSun.position.set(200, 400, 200);
+forgeScene.add(forgeSun);
+const forgeAmb = new THREE.AmbientLight(0x808080, 0.8);
+forgeScene.add(forgeAmb);
+forgeScene.fog = new THREE.Fog(0xB0D0FF, 500, 3000);
+forgeScene.background = new THREE.Color(0xB0D0FF);
+
+// weather particles (rain)
+let rainParticles = [];
+const rainGeo = new THREE.BufferGeometry();
+const rainPositions = new Float32Array(300*3);
+for(let i=0;i<300;i++){rainPositions[i*3]=Math.random()*2000-1000;rainPositions[i*3+1]=Math.random()*1000;rainPositions[i*3+2]=Math.random()*2000-1000;}
+rainGeo.setAttribute('position',new THREE.BufferAttribute(rainPositions,3));
+const rainMat = new THREE.PointsMaterial({color:0xCCDDEE,size:2,sizeAttenuation:true,transparent:true,opacity:0.6});
+const rainMesh = new THREE.Points(rainGeo,rainMat);
+forgeScene.add(rainMesh);
+function fitRain(){ const s = forge.gridSize/1400; rainMesh.scale.set(s,s,s); }
+
+// FORGE preview reads the SAME ATMO object the game flies in, so what you
+// tune here is what you land in. Field names are toomuch's (skyH/skyS/skyL).
+const _forgeCol = new THREE.Color();
+function applyAtmosphere(){
+  _forgeCol.setHSL(ATMO.skyH/360, ATMO.skyS, ATMO.skyL);
+  forgeScene.background.copy(_forgeCol);
+  forgeScene.fog.color.copy(_forgeCol);
+  refreshForgeFog();
+  forgeSun.intensity = ATMO.sunInt;
+  forgeAmb.intensity = ATMO.ambInt;
+  const az = ATMO.sunAz*Math.PI/180, el = ATMO.sunEl*Math.PI/180, r = 2000;
+  forgeSun.position.set(r*Math.cos(el)*Math.cos(az), r*Math.sin(el), r*Math.cos(el)*Math.sin(az));
+  rainMesh.visible = ATMO.weatherRain > 0;
+  rainMat.opacity = 0.4*ATMO.weatherRain;
+}
+// The preview world is `gridSize` units across and the camera orbits out to
+// 2500. Deriving fog from the GAME's fogNear/fogFar (thousands of units,
+// scaled by gridSize/WORLD.size) put the fog wall at ~86 units while the
+// camera sat at 310 — the terrain compiled fine and rendered inside solid
+// fog. Fog here tracks the preview's own scale instead. ATMO.mist still
+// drives it, so the slider stays meaningful in both scenes.
+function refreshForgeFog(){
+  const s = Math.max(forge.gridSize, fOrbit.radius);
+  forgeScene.fog.near = s * 0.60 * (1 - ATMO.weatherMist*0.45);
+  forgeScene.fog.far  = s * 4.00 * (1 - ATMO.weatherMist*0.55);
+}
+function stepRain(dt){
+  if(ATMO.weatherRain<=0) return;
+  const pos = rainGeo.attributes.position.array;
+  for(let i=0;i<300;i++){
+    pos[i*3+1] -= ATMO.weatherRain*800*dt;
+    if(pos[i*3+1]<0) pos[i*3+1]+=1200;
+  }
+  rainGeo.attributes.position.needsUpdate=true;
+}
+
+// ── minimal touch fOrbit (replaces OrbitControls, r128-safe) ──
+const fOrbit = {
+  target: new THREE.Vector3(0,0,0),
+  theta: Math.PI/4, phi: Math.PI/3.2, radius: 310,
+  vTheta: 0, vPhi: 0,
+  touches: {}, pinchDist: 0, panMid: null,
+  apply() {
+    this.phi = Math.max(0.08, Math.min(Math.PI-0.08, this.phi));
+    this.radius = Math.max(20, Math.min(2500, this.radius));
+    forgeCam.position.set(
+      this.target.x + this.radius * Math.sin(this.phi) * Math.cos(this.theta),
+      this.target.y + this.radius * Math.cos(this.phi),
+      this.target.z + this.radius * Math.sin(this.phi) * Math.sin(this.theta)
+    );
+    forgeCam.lookAt(this.target);
+  },
+  // screen-space drag → move the look-at target in the camera plane
+  pan(dxScreen, dyScreen) {
+    const k = this.radius * 0.0022;
+    const right = new THREE.Vector3().setFromMatrixColumn(forgeCam.matrix, 0);
+    const up    = new THREE.Vector3().setFromMatrixColumn(forgeCam.matrix, 1);
+    this.target.addScaledVector(right, -dxScreen * k);
+    this.target.addScaledVector(up,     dyScreen * k);
+    this.apply();
+  },
+  update(dt) { // damping drift
+    this.theta += this.vTheta; this.phi += this.vPhi;
+    const f = Math.exp(-6*dt);
+    this.vTheta *= f; this.vPhi *= f;
+    this.apply();
+  }
+};
+fOrbit.apply();
+
+function forgeTouchStart(e) {
+  if (APP !== 'forge') return;
+  if (e.target.closest('.ui-block')) return;
+  e.preventDefault();
+  for (const t of e.changedTouches) fOrbit.touches[t.identifier] = { x:t.clientX, y:t.clientY };
+  const ids = Object.keys(fOrbit.touches);
+  if (ids.length === 2) {
+    const a = fOrbit.touches[ids[0]], b = fOrbit.touches[ids[1]];
+    fOrbit.pinchDist = Math.hypot(a.x-b.x, a.y-b.y);
+    fOrbit.panMid = { x:(a.x+b.x)/2, y:(a.y+b.y)/2 };
+  }
+}
+function forgeTouchMove(e) {
+  if (APP !== 'forge') return;
+  if (e.target.closest('.ui-block')) return;
+  e.preventDefault();
+  const ids = Object.keys(fOrbit.touches);
+  if (ids.length === 1) {
+    const t = e.changedTouches[0];
+    const o = fOrbit.touches[t.identifier];
+    if (!o) return;
+    const dx = t.clientX - o.x, dy = t.clientY - o.y;
+    fOrbit.theta += dx * 0.008; fOrbit.phi -= dy * 0.008;
+    fOrbit.vTheta = dx * 0.0016; fOrbit.vPhi = -dy * 0.0016;
+    o.x = t.clientX; o.y = t.clientY;
+  } else if (ids.length === 2) {
+    for (const t of e.changedTouches) {
+      if (fOrbit.touches[t.identifier]) { fOrbit.touches[t.identifier].x = t.clientX; fOrbit.touches[t.identifier].y = t.clientY; }
+    }
+    const a = fOrbit.touches[ids[0]], b = fOrbit.touches[ids[1]];
+    const d   = Math.hypot(a.x-b.x, a.y-b.y);
+    const mid = { x:(a.x+b.x)/2, y:(a.y+b.y)/2 };
+    // pinch → zoom
+    if (fOrbit.pinchDist > 0) fOrbit.radius *= fOrbit.pinchDist / d;
+    fOrbit.pinchDist = d;
+    // two-finger drag (midpoint travel) → pan
+    if (fOrbit.panMid) fOrbit.pan(mid.x - fOrbit.panMid.x, mid.y - fOrbit.panMid.y);
+    fOrbit.panMid = mid;
+  }
+  fOrbit.apply();
+}
+function forgeTouchEnd(e) {
+  for (const t of e.changedTouches) delete fOrbit.touches[t.identifier];
+  fOrbit.pinchDist = 0;
+  fOrbit.panMid = null;
+}
+document.addEventListener('touchstart', forgeTouchStart, { passive:false });
+document.addEventListener('touchmove',  forgeTouchMove,  { passive:false });
+document.addEventListener('touchend',   forgeTouchEnd);
+document.addEventListener('touchcancel',forgeTouchEnd);
+// touch-only build: one finger = fOrbit, two fingers = pan + pinch zoom
+
+// ── image compilation pipeline (ported intact from compiler) ──
+async function processImageFiles(files) {
+  if (files.length === 0) return;
+  const loadPromises = Array.from(files).map(file => new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }));
+  forge.cachedImages = await Promise.all(loadPromises);
+  executeCompilation();
+}
+
+function executeCompilation() {
+  if (forge.cachedImages.length === 0) return;
+  const compCanvas = document.createElement('canvas');
+  compCanvas.width = forge.width; compCanvas.height = forge.height;
+  const ctx = compCanvas.getContext('2d');
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, forge.width, forge.height);
+
+  const rawCount = forge.cachedImages.length;
+
+  if (forge.stackMode === 'grid') {
+    const axisCount = Math.ceil(Math.sqrt(rawCount));
+    const totalCellsNeeded = axisCount * axisCount;
+    const cellW = forge.width / axisCount;
+    const cellH = forge.height / axisCount;
+    for (let i = 0; i < totalCellsNeeded; i++) {
+      const col = i % axisCount;
+      const row = Math.floor(i / axisCount);
+      ctx.drawImage(forge.cachedImages[i % rawCount], col*cellW, row*cellH, cellW, cellH);
+    }
+  } else if (forge.stackMode === 'stack') {
+    const cellH = forge.height / rawCount;
+    for (let i = 0; i < rawCount; i++)
+      ctx.drawImage(forge.cachedImages[i], 0, i*cellH, forge.width, cellH);
+  } else if (forge.stackMode === 'zstack') {
+    ctx.globalCompositeOperation = 'source-over';
+    for (let i = 0; i < rawCount; i++) {
+      ctx.globalAlpha = 1.0 / (i + 1);
+      ctx.drawImage(forge.cachedImages[i], 0, 0, forge.width, forge.height);
+    }
+    ctx.globalAlpha = 1.0;
+  }
+
+  const pixels = ctx.getImageData(0, 0, forge.width, forge.height).data;
+  const len = forge.width * forge.height;
+  forge.heights = new Float32Array(len);
+  forge.colors  = new Float32Array(len * 3);
+  for (let i = 0; i < len; i++) {
+    const idx = i * 4;
+    const r = pixels[idx]/255, g = pixels[idx+1]/255, b = pixels[idx+2]/255;
+    forge.heights[i] = r*0.299 + g*0.587 + b*0.114;
+    forge.colors[i*3] = r; forge.colors[i*3+1] = g; forge.colors[i*3+2] = b;
+  }
+  applyBlurPipeline();
+  rebuildVisuals();
+}
+
+function applyBlurPipeline() {
+  if (!forge.heights) return;
+  let current = new Float32Array(forge.heights);
+  const w = forge.width, h = forge.height;
+  for (let step = 0; step < forge.blur; step++) {
+    const next = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let sum = 0, count = 0;
+        for (let ky = -1; ky <= 1; ky++) for (let kx = -1; kx <= 1; kx++) {
+          const nx = x+kx, ny = y+ky;
+          if (nx >= 0 && nx < w && ny >= 0 && ny < h) { sum += current[ny*w+nx]; count++; }
+        }
+        next[y*w+x] = sum / count;
+      }
+    }
+    current = next;
+  }
+  forge.smooth = current;
+}
+
+// resolve vertex color per forge.colorMode (shared by preview + deploy + export)
+function forgeColorAt(pixelIndex, hVal) {
+  if (forge.colorMode === 'image')
+    return [forge.colors[pixelIndex*3], forge.colors[pixelIndex*3+1], forge.colors[pixelIndex*3+2]];
+  if (forge.colorMode === 'height')
+    return [hVal, hVal*0.2, 1.0 - hVal*0.5];
+  return [hVal, hVal, hVal];
+}
+
+function rebuildVisuals() {
+  if (!forge.heights) return;
+  if (forge.currentMesh) {
+    forgeScene.remove(forge.currentMesh);
+    forge.currentMesh.geometry.dispose();
+    forge.currentMesh.material.dispose();
+  }
+  const d = forge.density;
+  const geo = new THREE.PlaneGeometry(forge.gridSize, forge.gridSize, d-1, d-1);
+  geo.rotateX(-Math.PI/2);
+  const posAttr = geo.attributes.position;
+  const colorAttr = new THREE.BufferAttribute(new Float32Array(d*d*3), 3);
+  const w = forge.width, h = forge.height;
+
+  for (let y = 0; y < d; y++) {
+    for (let x = 0; x < d; x++) {
+      const index = y*d + x;
+      const px = Math.min(Math.floor((x/(d-1))*w), w-1);
+      const py = Math.min(Math.floor((y/(d-1))*h), h-1);
+      const pixelIndex = py*w + px;
+      const hVal = forge.smooth[pixelIndex];
+      posAttr.setY(index, hVal * forge.scale * (forge.gridSize * 0.2));
+      const [r,g,b] = forgeColorAt(pixelIndex, hVal);
+      colorAttr.setXYZ(index, r, g, b);
+    }
+  }
+  geo.setAttribute('color', colorAttr);
+  geo.computeVertexNormals();
+
+  if (forge.mode === 'mesh' || forge.mode === 'wireframe') {
+    forge.currentMesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+      vertexColors:true, roughness:0.5, metalness:0.0,
+      wireframe:(forge.mode==='wireframe'), side:THREE.DoubleSide
+    }));
+  } else {
+    forge.currentMesh = new THREE.Points(geo, new THREE.PointsMaterial({
+      size:(forge.gridSize/160), vertexColors:true, sizeAttenuation:true
+    }));
+  }
+  forgeScene.add(forge.currentMesh);
+  fitRain(); applyAtmosphere();
+
+  document.getElementById('forge-status').textContent = 'TERRAIN COMPILED — READY TO DEPLOY';
+  document.getElementById('statsText').innerHTML =
+    `STATUS: COMPILED<br>` +
+    `LAYOUT&nbsp;&nbsp;: ${forge.stackMode.toUpperCase()}<br>` +
+    `BOUNDS&nbsp;&nbsp;: ${forge.gridSize} x ${forge.gridSize} units<br>` +
+    `DENSITY : ${d}x${d} (${d*d} vertices)`;
+}
+
+// ── exports (independent JSON / PNG buttons) — cross-project format ──
+async function withBusyButton(btnId, fn) {
+  const btn = document.getElementById(btnId);
+  const originalText = btn.innerHTML;
+  btn.innerHTML = '⏳ PROCESSING...'; btn.disabled = true;
+  try { await fn(); }
+  catch (err) { alert('Export failed: ' + err.message); console.error(err); }
+  finally { btn.innerHTML = originalText; btn.disabled = false; }
+}
+
+async function exportJSON() {
+  if (!forge.smooth) { alert('CRITICAL ERROR: No telemetry buffer allocated in memory.'); return; }
+  await withBusyButton('exportJsonBtn', async () => {
+    const d = forge.density, w = forge.width, h = forge.height;
+    const timestamp = Date.now();
+    const pointTelemetryArray = [];
+    for (let y = 0; y < d; y++) {
+      for (let x = 0; x < d; x++) {
+        const px = Math.min(Math.floor((x/(d-1))*w), w-1);
+        const py = Math.min(Math.floor((y/(d-1))*h), h-1);
+        const pixelIndex = py*w + px;
+        const rawH = forge.heights[pixelIndex];
+        const smoothH = forge.smooth[pixelIndex];
+        const scaledH = smoothH * forge.scale;   // bake live Z-scale into saved value
+        const col = forgeColorAt(pixelIndex, smoothH);
+        pointTelemetryArray.push({
+          gridIndex: { x, y },
+          pixelCoordinate: { x: px, y: py },
+          elevationNormalized: parseFloat(scaledH.toFixed(5)),
+          elevationRaw: parseFloat(rawH.toFixed(5)),
+          colorRGB: [
+            parseFloat(col[0].toFixed(4)),
+            parseFloat(col[1].toFixed(4)),
+            parseFloat(col[2].toFixed(4))
+          ]
+        });
+      }
+      if (y % 16 === 0) await new Promise(r => setTimeout(r, 0));
+    }
+
+    const jsonString = JSON.stringify({
+      exportMeta: {
+        timestamp, systemDensity: d, totalPointCount: d*d,
+        layoutConfiguration: forge.stackMode,
+        physicalGridSize: forge.gridSize,
+        appliedHeightScale: forge.scale
+      },
+      vertexDataMatrix: pointTelemetryArray
+    }, null, 2);
+
+    const jsonBlob = new Blob([jsonString], { type:'application/json' });
+    const jsonLink = document.createElement('a');
+    jsonLink.download = `spatial_telemetry_${timestamp}.json`;
+    jsonLink.href = URL.createObjectURL(jsonBlob);
+    jsonLink.click();
+
+    document.getElementById('statsText').innerHTML =
+      `STATUS: EXPORTED<br>JSON : ${d*d} vertices`;
+  });
+}
+
+async function exportPNG() {
+  if (!forge.smooth) { alert('CRITICAL ERROR: No telemetry buffer allocated in memory.'); return; }
+  await withBusyButton('exportPngBtn', async () => {
+    const w = forge.width, h = forge.height;
+    const timestamp = Date.now();
+    const outputCanvas = document.createElement('canvas');
+    outputCanvas.width = w; outputCanvas.height = h;
+    const outCtx = outputCanvas.getContext('2d');
+    const outImgData = outCtx.createImageData(w, h);
+    const outputPixels = outImgData.data;
+    for (let i = 0; i < w*h; i++) {
+      const idx = i*4;
+      const val = Math.floor(forge.smooth[i]*255);
+      outputPixels[idx] = val; outputPixels[idx+1] = val; outputPixels[idx+2] = val;
+      outputPixels[idx+3] = 255;
+    }
+    outCtx.putImageData(outImgData, 0, 0);
+    const pngLink = document.createElement('a');
+    pngLink.download = `compiled_heightfield_${timestamp}.png`;
+    pngLink.href = outputCanvas.toDataURL('image/png');
+    pngLink.click();
+
+    document.getElementById('statsText').innerHTML =
+      `STATUS: EXPORTED<br>PNG&nbsp; : ${w}×${h}`;
+  });
+}
+
+// ── forge UI bindings ──
+document.getElementById('loadImagesBtn').addEventListener('click', () =>
+  document.getElementById('forge-files').click());
+document.getElementById('forge-files').addEventListener('change', e =>
+  processImageFiles(e.target.files));
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  if (forge.currentMesh) { forgeScene.remove(forge.currentMesh); forge.currentMesh = null; }
+  forge.heights = null; forge.smooth = null; forge.colors = null; forge.cachedImages = [];
+  document.getElementById('forge-files').value = '';
+  document.getElementById('forge-status').textContent = 'AWAITING SOURCE IMAGERY';
+  document.getElementById('statsText').innerHTML = '// Memory buffers cleared. System idle.';
+});
+
+const bindLayoutButton = (id, layoutType) => {
+  document.getElementById(id).addEventListener('click', (e) => {
+    ['modeGrid','modeStack','modeZStack'].forEach(i => document.getElementById(i).classList.remove('active'));
+    e.currentTarget.classList.add('active');
+    forge.stackMode = layoutType;
+    executeCompilation();
+  });
+};
+bindLayoutButton('modeGrid', 'grid');
+bindLayoutButton('modeStack', 'stack');
+bindLayoutButton('modeZStack', 'zstack');
+
+document.getElementById('gridSize').addEventListener('input', e => {
+  forge.gridSize = parseFloat(e.target.value);
+  document.getElementById('gridSizeVal').textContent = forge.gridSize;
+  rebuildVisuals();
+});
+document.getElementById('heightScale').addEventListener('input', e => {
+  forge.scale = parseFloat(e.target.value);
+  document.getElementById('heightScaleVal').textContent = forge.scale.toFixed(1);
+  rebuildVisuals();
+});
+document.getElementById('blurScale').addEventListener('input', e => {
+  forge.blur = parseInt(e.target.value);
+  document.getElementById('blurVal').textContent = forge.blur;
+  applyBlurPipeline(); rebuildVisuals();
+});
+document.getElementById('density').addEventListener('input', e => {
+  forge.density = parseInt(e.target.value);
+  document.getElementById('densityVal').textContent = forge.density;
+  rebuildVisuals();
+});
+document.querySelectorAll('[data-mode]').forEach(btn => {
+  btn.addEventListener('click', e => {
+    document.querySelectorAll('[data-mode]').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    forge.mode = e.target.getAttribute('data-mode');
+    rebuildVisuals();
+  });
+});
+document.querySelectorAll('[data-color]').forEach(btn => {
+  btn.addEventListener('click', e => {
+    document.querySelectorAll('[data-color]').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    forge.colorMode = e.target.getAttribute('data-color');
+    rebuildVisuals();
+  });
+});
+document.getElementById('exportJsonBtn').addEventListener('click', exportJSON);
+document.getElementById('exportPngBtn').addEventListener('click', exportPNG);
+document.getElementById('panel-toggle').addEventListener('click', () => {
+  const p = document.getElementById('panel');
+  p.classList.toggle('collapsed');
+  document.getElementById('panel-toggle').textContent =
+    p.classList.contains('collapsed') ? '▲ CONSOLE' : '▼ CONSOLE';
+});
+
+
+
+// ── DEPLOY: forge memory → TER heightfield (no file round-trip) ─────
+// toomuch's TERRAIN block is a Float32Array + O(1) bilinear floorY().
+// ODM_FORGE's original bridge raycast a mesh every sample; we skip that
+// entirely and hand the composer's buffers straight to TER.
+function deployForgeTerrain(){
+    if(!forge.smooth){ showToast('. . . nothing compiled . . .'); return; }
+    const d = forge.density, w = forge.width, h = forge.height;
+    TER.d = d;
+    TER.heights = new Float32Array(d*d);
+    TER.colors  = new Float32Array(d*d*3);
+    for(let iy=0; iy<d; iy++){
+        for(let ix=0; ix<d; ix++){
+            const px = Math.min(Math.floor((ix/(d-1))*w), w-1);
+            const py = Math.min(Math.floor((iy/(d-1))*h), h-1);
+            const p  = py*w + px;
+            const vi = iy*d + ix;
+            TER.heights[vi] = forge.smooth[p] * forge.scale;   // bake live Z-scale
+            const c = forgeColorAt(p, forge.smooth[p]);
+            TER.colors[vi*3]=c[0]; TER.colors[vi*3+1]=c[1]; TER.colors[vi*3+2]=c[2];
+        }
+    }
+    TER.baseScale = 50;
+    TER.active = true;
+    terrainChanged();
+    setApp('play');
+    showToast('terrain deployed · ' + d + '×' + d);
+}
+
+// ── app-level screen switch ─────────────────────────────────────────
+function setApp(m){
+    APP = m;
+    const on = (m==='forge');
+    document.getElementById('forge-ui').classList.toggle('on', on);
+    document.getElementById('hud').style.display        = on ? 'none' : '';
+    document.getElementById('xhair').style.display      = on ? 'none' : '';
+    document.getElementById('joyL').style.display       = on ? 'none' : '';
+    document.getElementById('joyR').style.display       = on ? 'none' : '';
+    document.getElementById('slash-canvas').style.display = on ? 'none' : '';
+    document.getElementById('ui-deck').style.display    = on ? 'none' : '';
+    document.getElementById('deck-pull').style.display  = on ? 'none' : '';
+    if(!on) clockSwallow = true;      // don't hand physics a 30-second dt
+    _refit();
+}
+document.getElementById('btn-forge').addEventListener('click',e=>{e.stopPropagation();setApp('forge');});
+document.getElementById('forgeExitBtn').addEventListener('click',()=>setApp('play'));
+document.getElementById('deployBtn').addEventListener('click',deployForgeTerrain);
 
 // ╔══════════════════════════════════════════════════════════╗
 // ║ [CORE] loop + boot                                        ║
@@ -2199,7 +3123,7 @@ function applyPreset(p){
         for(const k in p[ns])if(k in target&&typeof p[ns][k]===typeof target[k])target[k]=p[ns][k];
     }
     // re-apply everything visual/derived
-    if(p.ATMO){applySky();applySun();forestTintDirty=true;
+    if(p.ATMO){applySky();applySun();applyAtmosphere();forestTintDirty=true;
         ground.material.color.copy(GROUND_BASE).multiplyScalar(ATMO.groundBright);}
     if(p.M){if(pMat)pMat.size=M.smokeSize;currentHFov=M.hFov;setHFov(currentHFov);}
     if(p.JOY)setJoyLayout();
@@ -2221,42 +3145,88 @@ document.getElementById('btn-terrain').addEventListener('click', e=>{ e.stopProp
 document.getElementById('terrain-file').addEventListener('change', e=>{ if(e.target.files.length) loadTerrainFile(e.target.files[0]); e.target.value=''; });
 initSmoke();
 setJoyLayout();
-if(GAME_MODE==='combat'){spawnDummies();spawnTitans();}
 sizeSlashCanvas();
-applySky();applySun();
+applySun();
 renderer.setSize(cc.clientWidth||innerWidth,cc.clientHeight||innerHeight);
 camTarget.copy(player.pos).add(new THREE.Vector3(0,M.eyeOffset,0));
 setHFov(M.hFov);
+setGameMode(GAME_MODE);   // paints the mode button, sky preset, world + spawns
+fitRain(); applyAtmosphere();
+setApp('forge');          // boot into the map studio
 
 // ╔══════════════════════════════════════════════════════════╗
-// ║ [GAMEMODE] pluggable — combat (default) | sandbox | explorer ║
+// ║ [GAMEMODE] combat | sandbox | city | explorer             ║
+// ║ setGameMode   — drives everything from a mode key         ║
+// ║ applyGameMode — rebuilds world, props, sky, dummies       ║
+// ║ Each mode carries a sky preset; other ATMO values survive ║
+// ║ so the atmosphere deck (and the forge preview) stay live. ║
 // ╚══════════════════════════════════════════════════════════╝
 function setGameMode(m){
     if(!(m in GAMEMODES))return;
-    GAME_MODE=m; killCount=0; EL_KILLS.textContent=0;
-    respawnDummies(); respawnTitans();          // mode-aware: spawn in combat, clear otherwise
+    GAME_MODE=m;
+    const gm=GAMEMODES[m];
+    killCount=0; EL_KILLS.textContent=0;
+    document.getElementById('btn-mode').textContent=gm.lbl;
+    document.getElementById('h-title').textContent=gm.hud;
+    document.getElementById('h-killwrap').style.display=(m==='combat')?'':'none';
+    applyGameMode(m);
+    showToast('mode · '+gm.name);
+}
+
+function applyGameMode(m){
+    const gm=GAMEMODES[m];
+    ATMO.skyH=gm.skyH; ATMO.skyS=gm.skyS; ATMO.skyL=gm.skyL;
+    applySky(); applyAtmosphere();
+
+    // every mode starts from a clean slate
     for(const d of debris)scene.remove(d.mesh);
     debris.length=0;
-    document.getElementById('h-title').textContent=GAMEMODES[m].hud;
-    document.getElementById('h-killwrap').style.display=(m==='combat')?'':'none';
-    showToast('mode · '+GAMEMODES[m].name);
+    clearProps(); clearMechs();
+
+    if(m==='city'){
+        buildCity();                                  // swaps forest for a block grid
+        ground.material.color.setHex(0x383838);
+    }else{
+        clearCity();
+        if(lastForestData)buildForestMeshes(lastForestData); else regenForest();
+        ground.material.color.copy(GROUND_BASE).multiplyScalar(ATMO.groundBright);
+    }
+    if(m==='sandbox'){ spawnDefaultProps(); spawnDefaultMechs(); }
+
+    respawnDummies();   // no-op outside combat/sandbox/city per its own guard
+    respawnTitans();
+    refreshSliders();
 }
+
 document.getElementById('btn-mode').addEventListener('click',e=>{
     e.stopPropagation();
     setGameMode(MODE_ORDER[(MODE_ORDER.indexOf(GAME_MODE)+1)%MODE_ORDER.length]);
 });
 
 const clock=new THREE.Clock();
-let clockSwallow=false;
 function animate(){
     requestAnimationFrame(animate);
     let dt=Math.min(clock.getDelta(),0.05);
     if(clockSwallow){clockSwallow=false;dt=0.016;}
+
+    if(APP==='forge'){                       // map studio — the game sim is frozen
+        fOrbit.vTheta*=0.92; fOrbit.vPhi*=0.92;
+        if(Math.abs(fOrbit.vTheta)>1e-4||Math.abs(fOrbit.vPhi)>1e-4){
+            fOrbit.theta+=fOrbit.vTheta; fOrbit.phi+=fOrbit.vPhi; fOrbit.apply();
+        }
+        refreshForgeFog();      // pinch-zoom must not fly through the fog wall
+        stepRain(dt);
+        renderer.render(forgeScene,forgeCam);
+        return;
+    }
+
     if(forestTintDirty){forestTintDirty=false;retintForest();}
     if(MODE==='live'){
         simTime+=dt;
+        if(GAME_MODE==='sandbox')updateMechanisms(simTime);   // kinSpheres before physics
         physics(dt);
-        if(GAME_MODE==='combat'){updateDummies(dt);updateTitans(dt);}
+        if(GAME_MODE!=='explorer'){updateDummies(dt);updateTitans(dt);}
+        if(GAME_MODE==='sandbox')updateProps(dt);
         updateDebris(dt);
         updateSmoke(dt);
         drawSlash();
